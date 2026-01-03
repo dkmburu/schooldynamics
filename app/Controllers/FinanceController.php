@@ -18,7 +18,8 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            // Use tenant_id as school_id (they are the same in this multi-tenant setup)
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             // Get current academic year and term
             $stmt = $pdo->query("SELECT id, year_name FROM academic_years WHERE is_current = 1 LIMIT 1");
