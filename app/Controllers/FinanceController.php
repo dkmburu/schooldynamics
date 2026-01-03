@@ -20,56 +20,80 @@ class FinanceController
             $pdo = Database::getTenantConnection();
             $schoolId = $_SESSION['school_id'] ?? null;
 
-            // Get summary statistics
-            $currentMonth = date('Y-m-01');
-            $currentMonthEnd = date('Y-m-t');
+            // Get current academic year and term
+            $stmt = $pdo->query("SELECT id, year_name FROM academic_years WHERE is_current = 1 LIMIT 1");
+            $currentYear = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['id' => null, 'year_name' => 'Not Set'];
 
-            // Total collections this month
+            $stmt = $pdo->query("SELECT id, term_name FROM terms WHERE is_current = 1 LIMIT 1");
+            $currentTerm = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['id' => null, 'term_name' => 'Not Set'];
+
+            $stats = [];
+
+            // Total invoiced for current term
+            $stmt = $pdo->prepare("
+                SELECT COALESCE(SUM(total_amount), 0) as total
+                FROM invoices
+                WHERE school_id = ?
+                AND academic_year_id = ?
+            ");
+            $stmt->execute([$schoolId, $currentYear['id']]);
+            $stats['total_invoiced'] = $stmt->fetchColumn() ?: 0;
+
+            // Total collected for current term
             $stmt = $pdo->prepare("
                 SELECT COALESCE(SUM(amount), 0) as total
                 FROM payments
                 WHERE school_id = ?
-                AND payment_date BETWEEN ? AND ?
                 AND status = 'completed'
             ");
-            $stmt->execute([$schoolId, $currentMonth, $currentMonthEnd]);
-            $collections = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stmt->execute([$schoolId]);
+            $stats['total_collected'] = $stmt->fetchColumn() ?: 0;
 
-            // Total outstanding
+            // Total outstanding (all accounts with balance > 0)
             $stmt = $pdo->prepare("
-                SELECT COALESCE(SUM(current_balance), 0) as total
+                SELECT COALESCE(SUM(current_balance), 0) as total,
+                       COUNT(*) as count
                 FROM student_fee_accounts
                 WHERE school_id = ? AND current_balance > 0
             ");
             $stmt->execute([$schoolId]);
-            $outstanding = $stmt->fetch(PDO::FETCH_ASSOC);
+            $outstandingData = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stats['total_outstanding'] = $outstandingData['total'] ?? 0;
+            $stats['students_with_balance'] = $outstandingData['count'] ?? 0;
 
-            // Recent payments
+            // Collection rate
+            if ($stats['total_invoiced'] > 0) {
+                $stats['collection_rate'] = ($stats['total_collected'] / $stats['total_invoiced']) * 100;
+            } else {
+                $stats['collection_rate'] = 0;
+            }
+
+            // Recent payments with payer info
             $stmt = $pdo->prepare("
-                SELECT p.*,
-                    COALESCE(s.first_name, a.first_name) as student_first_name,
-                    COALESCE(s.last_name, a.last_name) as student_last_name,
-                    COALESCE(s.admission_number, a.admission_number) as admission_number
+                SELECT p.id, p.receipt_number, p.amount, p.payment_date, p.payment_method,
+                    COALESCE(CONCAT(s.first_name, ' ', s.last_name), CONCAT(a.first_name, ' ', a.last_name)) as payer_name,
+                    pm.name as method_name
                 FROM payments p
                 LEFT JOIN student_fee_accounts sfa ON sfa.id = p.student_fee_account_id
                 LEFT JOIN students s ON s.id = sfa.student_id
                 LEFT JOIN applicants a ON a.id = sfa.applicant_id
-                WHERE p.school_id = ?
-                ORDER BY p.created_at DESC
+                LEFT JOIN payment_methods pm ON pm.code = p.payment_method
+                WHERE p.school_id = ? AND p.status = 'completed'
+                ORDER BY p.payment_date DESC, p.created_at DESC
                 LIMIT 10
             ");
             $stmt->execute([$schoolId]);
-            $recentPayments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stats['recent_payments'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            Response::view('finance/index', [
+            Response::view('finance/dashboard', [
                 'pageTitle' => 'Finance Dashboard',
-                'collections_this_month' => $collections['total'] ?? 0,
-                'total_outstanding' => $outstanding['total'] ?? 0,
-                'recentPayments' => $recentPayments
+                'stats' => $stats,
+                'current_year' => $currentYear,
+                'current_term' => $currentTerm
             ]);
         } catch (Exception $e) {
             error_log('Finance Dashboard error: ' . $e->getMessage());
-            flash('error', 'Failed to load dashboard');
+            flash('error', 'Failed to load dashboard: ' . $e->getMessage());
             Response::redirect('/dashboard');
         }
     }
