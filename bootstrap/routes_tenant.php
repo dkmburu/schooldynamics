@@ -217,6 +217,44 @@ Router::get('/finance/reports/collection', 'FinanceController@collectionReport')
 Router::get('/finance/reports/outstanding', 'FinanceController@outstandingReport');
 Router::get('/finance/reports/income', 'FinanceController@incomeStatement');
 
+// Expenses (Suppliers, Purchase Orders, GRN, Invoices, Payments)
+Router::get('/finance/expenses', 'ExpensesController@index');
+Router::get('/finance/expenses/:tab', 'ExpensesController@index');
+
+// Suppliers API
+Router::get('/finance/expenses/api/suppliers', 'ExpensesController@getSuppliers');
+Router::post('/finance/expenses/api/suppliers', 'ExpensesController@storeSupplier');
+Router::get('/finance/expenses/api/suppliers/:id', 'ExpensesController@getSupplier');
+Router::post('/finance/expenses/api/suppliers/:id', 'ExpensesController@updateSupplier');
+Router::post('/finance/expenses/api/suppliers/:id/delete', 'ExpensesController@deleteSupplier');
+
+// Purchase Orders API
+Router::get('/finance/expenses/api/purchase-orders', 'ExpensesController@getPurchaseOrders');
+Router::post('/finance/expenses/api/purchase-orders', 'ExpensesController@storePurchaseOrder');
+Router::get('/finance/expenses/api/purchase-orders/:id', 'ExpensesController@getPurchaseOrder');
+Router::post('/finance/expenses/api/purchase-orders/:id', 'ExpensesController@updatePurchaseOrder');
+Router::post('/finance/expenses/api/purchase-orders/:id/approve', 'ExpensesController@approvePurchaseOrder');
+Router::post('/finance/expenses/api/purchase-orders/:id/cancel', 'ExpensesController@cancelPurchaseOrder');
+
+// GRN API
+Router::get('/finance/expenses/api/grn', 'ExpensesController@getGRNs');
+Router::post('/finance/expenses/api/grn', 'ExpensesController@storeGRN');
+Router::get('/finance/expenses/api/grn/:id', 'ExpensesController@getGRN');
+Router::post('/finance/expenses/api/grn/:id/confirm', 'ExpensesController@confirmGRN');
+
+// Supplier Invoices API
+Router::get('/finance/expenses/api/invoices', 'ExpensesController@getSupplierInvoices');
+Router::post('/finance/expenses/api/invoices', 'ExpensesController@storeSupplierInvoice');
+Router::get('/finance/expenses/api/invoices/:id', 'ExpensesController@getSupplierInvoice');
+Router::post('/finance/expenses/api/invoices/:id', 'ExpensesController@updateSupplierInvoice');
+Router::post('/finance/expenses/api/invoices/:id/approve', 'ExpensesController@approveSupplierInvoice');
+
+// Supplier Payments API
+Router::get('/finance/expenses/api/payments', 'ExpensesController@getSupplierPayments');
+Router::post('/finance/expenses/api/payments', 'ExpensesController@storeSupplierPayment');
+Router::get('/finance/expenses/api/payments/:id', 'ExpensesController@getSupplierPayment');
+Router::post('/finance/expenses/api/payments/:id/approve', 'ExpensesController@approveSupplierPayment');
+
 // Academics
 Router::get('/academics/classes', 'ClassesController@index');
 Router::get('/academics/subjects', 'SubjectsController@index');

@@ -18,6 +18,9 @@
             </div>
             <div class="col-auto ms-auto">
                 <div class="btn-list">
+                    <a href="/finance/expenses" class="btn" style="background-color: #f76707; color: white; border-color: #f76707;" onmouseover="this.style.backgroundColor='#e8590c'; this.style.borderColor='#e8590c';" onmouseout="this.style.backgroundColor='#f76707'; this.style.borderColor='#f76707';">
+                        <i class="ti ti-building-store me-2"></i>Expenses
+                    </a>
                     <a href="/finance/invoices/generate" class="btn btn-primary">
                         <i class="ti ti-file-plus me-2"></i>Generate Invoices
                     </a>
@@ -163,6 +166,17 @@
                                     <i class="ti ti-bus text-purple"></i>
                                 </div>
                                 <div class="col">Transport Tariffs</div>
+                                <div class="col-auto">
+                                    <i class="ti ti-chevron-right text-muted"></i>
+                                </div>
+                            </div>
+                        </a>
+                        <a href="/finance/expenses" class="list-group-item list-group-item-action">
+                            <div class="row align-items-center">
+                                <div class="col-auto">
+                                    <i class="ti ti-shopping-cart text-danger"></i>
+                                </div>
+                                <div class="col">Expenses & Suppliers</div>
                                 <div class="col-auto">
                                     <i class="ti ti-chevron-right text-muted"></i>
                                 </div>
