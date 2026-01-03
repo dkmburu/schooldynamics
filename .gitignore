@@ -1,0 +1,63 @@
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+storage/logs/*.log
+storage/logs/**/*.log
+
+# Cache & Sessions
+storage/cache/*
+storage/sessions/*
+!storage/cache/.gitkeep
+!storage/sessions/.gitkeep
+
+# Uploads
+storage/uploads/*
+!storage/uploads/.gitkeep
+public/uploads/*
+!public/uploads/.gitkeep
+
+# Vendor
+vendor/
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.old
+
+# Node modules (if any)
+node_modules/
+
+# Database dumps (keep separate)
+*.sql
+!database/schema/*.sql
+!database/migrations/*.sql
+!database/seeds/*.sql
+
+# Local config overrides
+config.local.php
+
+# Windows reserved names (problematic)
+nul
+NUL
+CON
+PRN
+AUX
+COM*
+LPT*
+
+# Claude Code local settings
+.claude/
+temp_template/

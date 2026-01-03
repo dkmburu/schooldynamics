@@ -1,0 +1,87 @@
+/**
+ * AJAX Router Styles
+ * Loading indicators and transition effects
+ */
+
+/* Content transition */
+.content-wrapper {
+    transition: opacity 0.15s ease-in-out;
+}
+
+.content-wrapper.ajax-loading {
+    pointer-events: none;
+}
+
+/* Loading overlay */
+#ajax-loading-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(2px);
+}
+
+.ajax-spinner {
+    background: white;
+    padding: 30px 50px;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    text-align: center;
+}
+
+.ajax-spinner i {
+    color: #007bff;
+    margin-bottom: 15px;
+}
+
+.ajax-spinner p {
+    margin: 0;
+    font-size: 16px;
+    color: #333;
+    font-weight: 500;
+}
+
+/* Progress bar at top */
+.ajax-progress-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 3px;
+    background: linear-gradient(to right, #007bff, #0056b3);
+    z-index: 10000;
+    transition: width 0.3s ease;
+    box-shadow: 0 0 10px rgba(0, 123, 255, 0.5);
+}
+
+/* Fade in animation for new content */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.ajax-content-loaded {
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Sidebar stays fixed during navigation */
+.main-sidebar {
+    transition: none !important;
+}
+
+/* Disable pointer events during loading */
+.ajax-loading * {
+    pointer-events: none !important;
+}
