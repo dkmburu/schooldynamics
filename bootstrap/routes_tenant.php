@@ -176,10 +176,10 @@ Router::post('/finance/fee-structures/save', 'FinanceController@saveFeeStructure
 
 // Transport Tariffs
 Router::get('/finance/transport-tariffs', 'FinanceController@transportTariffs');
-Router::post('/finance/transport-tariffs/store', 'FinanceController@storeTransportTariff');
-Router::post('/finance/transport-tariffs/update', 'FinanceController@updateTransportTariff');
-Router::post('/finance/transport-zones/store', 'FinanceController@storeTransportZone');
-Router::post('/finance/transport-zones/update', 'FinanceController@updateTransportZone');
+Router::post('/finance/transport-tariffs/store', 'FinanceController@storeTariff');
+Router::post('/finance/transport-tariffs/update', 'FinanceController@updateTariff');
+Router::post('/finance/transport-zones/store', 'FinanceController@storeZone');
+Router::post('/finance/transport-zones/update', 'FinanceController@updateZone');
 
 // Invoicing
 Router::get('/finance/invoices', 'FinanceController@invoices');

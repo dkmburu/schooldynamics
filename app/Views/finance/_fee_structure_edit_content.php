@@ -182,8 +182,8 @@ foreach ($lines as $line) {
                                             <div class="text-muted small"><?= e($item['code']) ?></div>
                                         </td>
                                         <td>
-                                            <span class="badge bg-<?= $item['category_type'] === 'recurring' ? 'primary' : 'secondary' ?>-lt">
-                                                <?= ucfirst($item['category_type']) ?>
+                                            <span class="badge bg-<?= ($item['category_type'] ?? '') === 'recurring' ? 'primary' : 'secondary' ?>-lt">
+                                                <?= ucfirst($item['category_type'] ?? 'other') ?>
                                             </span>
                                         </td>
                                         <td>

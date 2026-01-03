@@ -75,7 +75,7 @@ $categoryTypes = [
                         </thead>
                         <tbody>
                             <?php foreach ($items as $item): ?>
-                            <?php $typeConfig = $categoryTypes[$item['category_type']] ?? ['label' => 'Other', 'color' => 'secondary']; ?>
+                            <?php $typeConfig = $categoryTypes[$item['category_type'] ?? 'other'] ?? ['label' => 'Other', 'color' => 'secondary']; ?>
                             <tr>
                                 <td><code><?= e($item['code']) ?></code></td>
                                 <td>
@@ -185,8 +185,81 @@ $categoryTypes = [
     </div>
 </div>
 
+<!-- Edit Fee Item Modal -->
+<div class="modal fade" id="editItemModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="/finance/fee-items/update" id="editItemForm">
+                <input type="hidden" name="id" id="edit_item_id">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="ti ti-edit me-2"></i>Edit Fee Item
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label required">Category</label>
+                            <select name="fee_category_id" id="edit_fee_category_id" class="form-select" required>
+                                <option value="">Select category...</option>
+                                <?php foreach ($categories as $cat): ?>
+                                <option value="<?= $cat['id'] ?>">
+                                    <?= e($cat['name']) ?>
+                                    (<?= ucwords(str_replace('_', ' ', $cat['category_type'])) ?>)
+                                </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label required">Code</label>
+                            <input type="text" name="code" id="edit_code" class="form-control" required
+                                   style="text-transform: uppercase;">
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label required">Item Name</label>
+                            <input type="text" name="name" id="edit_name" class="form-control" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Default Amount (KES)</label>
+                            <input type="number" name="default_amount" id="edit_default_amount" class="form-control" step="0.01" min="0">
+                            <small class="text-muted">Can be overridden in fee structures</small>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Description</label>
+                            <textarea name="description" id="edit_description" class="form-control" rows="2"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-check">
+                                <input type="checkbox" name="is_active" id="edit_is_active" class="form-check-input" value="1">
+                                <span class="form-check-label">Active</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="ti ti-x me-1"></i>Cancel
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="ti ti-device-floppy me-1"></i>Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
 function editItem(item) {
-    alert('Edit functionality coming soon. Item: ' + item.name);
+    document.getElementById('edit_item_id').value = item.id;
+    document.getElementById('edit_fee_category_id').value = item.fee_category_id;
+    document.getElementById('edit_code').value = item.code;
+    document.getElementById('edit_name').value = item.name;
+    document.getElementById('edit_default_amount').value = item.default_amount || 0;
+    document.getElementById('edit_description').value = item.description || '';
+    document.getElementById('edit_is_active').checked = item.is_active == 1;
+
+    new bootstrap.Modal(document.getElementById('editItemModal')).show();
 }
 </script>

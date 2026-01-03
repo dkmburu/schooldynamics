@@ -61,16 +61,9 @@
                                         <div class="text-muted small">
                                             <?= $zone['min_distance_km'] ?>km - <?= $zone['max_distance_km'] ?>km
                                         </div>
-                                        <!-- Audit Trail -->
-                                        <div class="text-muted small mt-1" style="font-size: 0.7rem;">
-                                            <?php if ($zone['updated_by_name']): ?>
-                                                <i class="ti ti-edit me-1"></i>Updated by <?= e($zone['updated_by_name']) ?>
-                                                on <?= date('M j, Y', strtotime($zone['updated_at'])) ?>
-                                            <?php elseif ($zone['created_by_name']): ?>
-                                                <i class="ti ti-user me-1"></i>Created by <?= e($zone['created_by_name']) ?>
-                                                on <?= date('M j, Y', strtotime($zone['created_at'])) ?>
-                                            <?php endif; ?>
-                                        </div>
+                                        <?php if (!empty($zone['description'])): ?>
+                                        <div class="text-muted small"><?= e($zone['description']) ?></div>
+                                        <?php endif; ?>
                                     </div>
                                     <?php if (hasPermission('Finance.write') || Gate::hasRole('ADMIN')): ?>
                                     <button class="btn btn-icon btn-ghost-secondary btn-sm"
@@ -123,11 +116,11 @@
                                     <?php foreach ($tariffs as $tariff): ?>
                                     <tr>
                                         <td>
-                                            <strong><?= e($tariff['zone_code']) ?></strong>
+                                            <strong><?= e($tariff['zone_code'] ?? '-') ?></strong>
                                             <span class="text-muted">-</span>
-                                            <?= e($tariff['zone_name']) ?>
+                                            <?= e($tariff['zone_name'] ?? 'Unknown Zone') ?>
                                         </td>
-                                        <td><?= e($tariff['year_name']) ?></td>
+                                        <td><?= e($tariff['academic_year'] ?? '-') ?></td>
                                         <td><?= e($tariff['term_name'] ?? 'All Terms') ?></td>
                                         <td>
                                             <span class="badge bg-<?= $tariff['direction'] == 'two_way' ? 'success' : 'info' ?>-lt">
@@ -139,12 +132,10 @@
                                         </td>
                                         <td>
                                             <div class="text-muted small">
-                                                <?php if ($tariff['updated_by_name']): ?>
-                                                    <i class="ti ti-edit me-1"></i><?= e($tariff['updated_by_name']) ?>
-                                                    <br><span class="text-muted"><?= date('M j, Y H:i', strtotime($tariff['updated_at'])) ?></span>
-                                                <?php elseif ($tariff['created_by_name']): ?>
-                                                    <i class="ti ti-user me-1"></i><?= e($tariff['created_by_name']) ?>
-                                                    <br><span class="text-muted"><?= date('M j, Y H:i', strtotime($tariff['created_at'])) ?></span>
+                                                <?php if (!empty($tariff['updated_at'])): ?>
+                                                    <i class="ti ti-clock me-1"></i><?= date('M j, Y', strtotime($tariff['updated_at'])) ?>
+                                                <?php elseif (!empty($tariff['created_at'])): ?>
+                                                    <i class="ti ti-clock me-1"></i><?= date('M j, Y', strtotime($tariff['created_at'])) ?>
                                                 <?php else: ?>
                                                     <span class="text-muted">-</span>
                                                 <?php endif; ?>
@@ -264,8 +255,8 @@
                             <label class="form-label required">Academic Year</label>
                             <select name="academic_year_id" class="form-select" required>
                                 <option value="">Select year...</option>
-                                <?php foreach ($years as $year): ?>
-                                <option value="<?= $year['id'] ?>"><?= e($year['year_name']) ?></option>
+                                <?php foreach ($academicYears as $year): ?>
+                                <option value="<?= $year['id'] ?>" <?= $year['is_current'] ? 'selected' : '' ?>><?= e($year['year_name']) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -316,7 +307,7 @@
                             <label class="form-label required">Academic Year</label>
                             <select name="academic_year_id" id="editTariffYear" class="form-select" required>
                                 <option value="">Select year...</option>
-                                <?php foreach ($years as $year): ?>
+                                <?php foreach ($academicYears as $year): ?>
                                 <option value="<?= $year['id'] ?>"><?= e($year['year_name']) ?></option>
                                 <?php endforeach; ?>
                             </select>
@@ -341,10 +332,6 @@
                             <label class="form-label required">Amount (KES)</label>
                             <input type="number" name="amount" id="editTariffAmount" class="form-control" required step="0.01" min="0">
                         </div>
-                    </div>
-                    <!-- Audit Info -->
-                    <div class="mt-3 p-2 bg-light rounded" id="editTariffAudit">
-                        <small class="text-muted" id="editTariffAuditText"></small>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -375,21 +362,6 @@ window.editTariff = function(tariff) {
     document.getElementById('editTariffZone').value = tariff.transport_zone_id;
     document.getElementById('editTariffDirection').value = tariff.direction;
     document.getElementById('editTariffAmount').value = tariff.amount;
-
-    // Show audit info
-    let auditText = '';
-    if (tariff.updated_by_name) {
-        auditText = 'Last updated by ' + tariff.updated_by_name + ' on ' + new Date(tariff.updated_at).toLocaleString();
-    } else if (tariff.created_by_name) {
-        auditText = 'Created by ' + tariff.created_by_name + ' on ' + new Date(tariff.created_at).toLocaleString();
-    }
-
-    if (auditText) {
-        document.getElementById('editTariffAuditText').textContent = auditText;
-        document.getElementById('editTariffAudit').style.display = 'block';
-    } else {
-        document.getElementById('editTariffAudit').style.display = 'none';
-    }
 
     const modal = new bootstrap.Modal(document.getElementById('editTariffModal'));
     modal.show();

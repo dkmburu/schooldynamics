@@ -110,19 +110,36 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("
                 SELECT * FROM chart_of_accounts
                 WHERE school_id = ?
-                ORDER BY account_code
+                ORDER BY account_type, account_code
             ");
             $stmt->execute([$schoolId]);
             $accounts = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+            // Group accounts by type for the view tabs
+            $accounts_by_type = [
+                'asset' => [],
+                'liability' => [],
+                'equity' => [],
+                'income' => [],
+                'expense' => []
+            ];
+
+            foreach ($accounts as $account) {
+                $type = $account['account_type'] ?? 'asset';
+                if (isset($accounts_by_type[$type])) {
+                    $accounts_by_type[$type][] = $account;
+                }
+            }
+
             Response::view('finance/chart_of_accounts', [
                 'pageTitle' => 'Chart of Accounts',
-                'accounts' => $accounts
+                'accounts' => $accounts,
+                'accounts_by_type' => $accounts_by_type
             ]);
         } catch (Exception $e) {
             error_log('Chart of Accounts error: ' . $e->getMessage());
@@ -139,7 +156,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
             $userId = $_SESSION['user_id'] ?? null;
 
             $stmt = $pdo->prepare("
@@ -173,7 +190,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
             $userId = $_SESSION['user_id'] ?? null;
 
             $stmt = $pdo->prepare("
@@ -209,7 +226,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("DELETE FROM chart_of_accounts WHERE id = ? AND school_id = ?");
             $stmt->execute([$id, $schoolId]);
@@ -233,7 +250,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("
                 SELECT fc.*,
@@ -245,9 +262,29 @@ class FinanceController
             $stmt->execute([$schoolId]);
             $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+            // Get income accounts (type = 'income') for dropdown
+            $stmt = $pdo->prepare("
+                SELECT id, account_code, account_name FROM chart_of_accounts
+                WHERE school_id = ? AND account_type = 'income' AND is_active = 1
+                ORDER BY account_code
+            ");
+            $stmt->execute([$schoolId]);
+            $income_accounts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Get asset accounts (for accounts receivable) for dropdown
+            $stmt = $pdo->prepare("
+                SELECT id, account_code, account_name FROM chart_of_accounts
+                WHERE school_id = ? AND account_type = 'asset' AND is_active = 1
+                ORDER BY account_code
+            ");
+            $stmt->execute([$schoolId]);
+            $ar_accounts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
             Response::view('finance/fee_categories', [
                 'pageTitle' => 'Fee Categories',
-                'categories' => $categories
+                'categories' => $categories,
+                'income_accounts' => $income_accounts,
+                'ar_accounts' => $ar_accounts
             ]);
         } catch (Exception $e) {
             error_log('Fee Categories error: ' . $e->getMessage());
@@ -264,7 +301,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("
                 INSERT INTO fee_categories (school_id, code, name, category_type, description, is_refundable, is_active, sort_order, created_at)
@@ -297,7 +334,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("
                 UPDATE fee_categories
@@ -332,7 +369,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             // Check if category has items
             $stmt = $pdo->prepare("SELECT COUNT(*) as cnt FROM fee_items WHERE fee_category_id = ?");
@@ -367,10 +404,10 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("
-                SELECT fi.*, fc.name as category_name, fc.code as category_code
+                SELECT fi.*, fc.name as category_name, fc.code as category_code, fc.category_type
                 FROM fee_items fi
                 LEFT JOIN fee_categories fc ON fc.id = fi.fee_category_id
                 WHERE fi.school_id = ?
@@ -380,7 +417,7 @@ class FinanceController
             $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             $stmt = $pdo->prepare("
-                SELECT id, code, name FROM fee_categories
+                SELECT id, code, name, category_type FROM fee_categories
                 WHERE school_id = ? AND is_active = 1
                 ORDER BY sort_order, name
             ");
@@ -407,7 +444,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("
                 INSERT INTO fee_items (school_id, fee_category_id, code, name, description, default_amount, is_mandatory, is_recurring, frequency, is_active, created_at)
@@ -434,30 +471,35 @@ class FinanceController
         Response::redirect('/finance/fee-items');
     }
 
-    public function updateFeeItem($id)
+    public function updateFeeItem($id = null)
     {
         if (!isAuthenticated()) {
             Response::redirect('/login');
         }
 
+        // Get ID from POST if not provided in URL
+        $id = $id ?? $_POST['id'] ?? null;
+        if (!$id) {
+            flash('error', 'No fee item ID provided');
+            Response::redirect('/finance/fee-items');
+            return;
+        }
+
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("
                 UPDATE fee_items
-                SET fee_category_id = ?, code = ?, name = ?, description = ?, default_amount = ?, is_mandatory = ?, is_recurring = ?, frequency = ?, is_active = ?, updated_at = NOW()
+                SET fee_category_id = ?, code = ?, name = ?, description = ?, default_amount = ?, is_active = ?, updated_at = NOW()
                 WHERE id = ? AND school_id = ?
             ");
             $stmt->execute([
                 $_POST['fee_category_id'],
-                $_POST['code'],
+                strtoupper($_POST['code']),
                 $_POST['name'],
                 $_POST['description'] ?? null,
                 $_POST['default_amount'] ?? 0,
-                isset($_POST['is_mandatory']) ? 1 : 0,
-                isset($_POST['is_recurring']) ? 1 : 0,
-                $_POST['frequency'] ?? 'term',
                 isset($_POST['is_active']) ? 1 : 0,
                 $id,
                 $schoolId
@@ -479,7 +521,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("DELETE FROM fee_items WHERE id = ? AND school_id = ?");
             $stmt->execute([$id, $schoolId]);
@@ -503,30 +545,47 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
+            error_log("Fee Structures: Starting with schoolId = $schoolId");
 
             $stmt = $pdo->prepare("
                 SELECT fs.*,
-                    ay.year_name as academic_year,
-                    glg.group_name as grade_group_name,
-                    (SELECT COUNT(*) FROM fee_structure_items fsi WHERE fsi.fee_structure_id = fs.id) as item_count,
-                    (SELECT SUM(fsi.amount) FROM fee_structure_items fsi WHERE fsi.fee_structure_id = fs.id) as total_amount
+                    ay.year_name,
+                    t.term_name,
+                    g.grade_name,
+                    c.campus_name,
+                    (SELECT COUNT(*) FROM fee_structure_lines fsl WHERE fsl.fee_structure_id = fs.id) as line_count
                 FROM fee_structures fs
                 LEFT JOIN academic_years ay ON ay.id = fs.academic_year_id
-                LEFT JOIN grade_level_groups glg ON glg.id = fs.grade_level_group_id
+                LEFT JOIN terms t ON t.id = fs.term_id
+                LEFT JOIN grades g ON g.id = fs.grade_id
+                LEFT JOIN campuses c ON c.id = fs.campus_id
                 WHERE fs.school_id = ?
-                ORDER BY ay.start_date DESC, fs.name
+                ORDER BY ay.start_date DESC, g.sort_order, fs.name
             ");
             $stmt->execute([$schoolId]);
             $structures = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            error_log("Fee Structures: Got " . count($structures) . " structures");
 
-            $stmt = $pdo->prepare("SELECT id, year_name FROM academic_years WHERE school_id = ? ORDER BY start_date DESC");
-            $stmt->execute([$schoolId]);
-            $academicYears = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            // academic_years has no school_id column
+            $stmt = $pdo->query("SELECT id, year_name, is_current FROM academic_years ORDER BY start_date DESC");
+            $years = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            error_log("Fee Structures: Got " . count($years) . " years");
 
-            $stmt = $pdo->prepare("SELECT id, group_name FROM grade_level_groups WHERE school_id = ? AND is_active = 1 ORDER BY id");
-            $stmt->execute([$schoolId]);
-            $gradeGroups = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            // Get grades (not grade groups)
+            $stmt = $pdo->query("SELECT id, grade_name FROM grades WHERE is_active = 1 ORDER BY sort_order");
+            $grades = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            error_log("Fee Structures: Got " . count($grades) . " grades");
+
+            // Get terms
+            $stmt = $pdo->query("SELECT id, term_name FROM terms ORDER BY term_number");
+            $terms = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            error_log("Fee Structures: Got " . count($terms) . " terms");
+
+            // Get campuses (no school_id in this table)
+            $stmt = $pdo->query("SELECT id, campus_name FROM campuses WHERE is_active = 1 ORDER BY sort_order, campus_name");
+            $campuses = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            error_log("Fee Structures: Got " . count($campuses) . " campuses");
 
             $stmt = $pdo->prepare("
                 SELECT fi.id, fi.code, fi.name, fi.default_amount, fc.name as category_name
@@ -537,12 +596,15 @@ class FinanceController
             ");
             $stmt->execute([$schoolId]);
             $feeItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            error_log("Fee Structures: Got " . count($feeItems) . " feeItems, rendering view");
 
             Response::view('finance/fee_structures', [
                 'pageTitle' => 'Fee Structures',
                 'structures' => $structures,
-                'academicYears' => $academicYears,
-                'gradeGroups' => $gradeGroups,
+                'years' => $years,
+                'grades' => $grades,
+                'terms' => $terms,
+                'campuses' => $campuses,
                 'feeItems' => $feeItems
             ]);
         } catch (Exception $e) {
@@ -560,13 +622,15 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("
-                SELECT fs.*, ay.year_name as academic_year, glg.group_name as grade_group_name
+                SELECT fs.*, ay.year_name as academic_year, t.term_name, g.grade_name, c.campus_name
                 FROM fee_structures fs
                 LEFT JOIN academic_years ay ON ay.id = fs.academic_year_id
-                LEFT JOIN grade_level_groups glg ON glg.id = fs.grade_level_group_id
+                LEFT JOIN terms t ON t.id = fs.term_id
+                LEFT JOIN grades g ON g.id = fs.grade_id
+                LEFT JOIN campuses c ON c.id = fs.campus_id
                 WHERE fs.id = ? AND fs.school_id = ?
             ");
             $stmt->execute([$id, $schoolId]);
@@ -580,7 +644,7 @@ class FinanceController
 
             $stmt = $pdo->prepare("
                 SELECT fsi.*, fi.code, fi.name as item_name, fc.name as category_name
-                FROM fee_structure_items fsi
+                FROM fee_structure_lines fsi
                 LEFT JOIN fee_items fi ON fi.id = fsi.fee_item_id
                 LEFT JOIN fee_categories fc ON fc.id = fi.fee_category_id
                 WHERE fsi.fee_structure_id = ?
@@ -601,6 +665,99 @@ class FinanceController
         }
     }
 
+    public function editFeeStructure($id = null)
+    {
+        if (!isAuthenticated()) {
+            Response::redirect('/login');
+        }
+
+        try {
+            $pdo = Database::getTenantConnection();
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
+
+            $structure = null;
+            $lines = [];
+
+            if ($id) {
+                // Editing existing structure
+                $stmt = $pdo->prepare("
+                    SELECT fs.*
+                    FROM fee_structures fs
+                    WHERE fs.id = ? AND fs.school_id = ?
+                ");
+                $stmt->execute([$id, $schoolId]);
+                $structure = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$structure) {
+                    flash('error', 'Fee structure not found');
+                    Response::redirect('/finance/fee-structures');
+                    return;
+                }
+
+                // Get existing fee structure lines
+                $stmt = $pdo->prepare("
+                    SELECT fsl.*, fi.code, fi.name as item_name, fc.name as category_name
+                    FROM fee_structure_lines fsl
+                    LEFT JOIN fee_items fi ON fi.id = fsl.fee_item_id
+                    LEFT JOIN fee_categories fc ON fc.id = fi.fee_category_id
+                    WHERE fsl.fee_structure_id = ?
+                    ORDER BY fc.sort_order, fi.name
+                ");
+                $stmt->execute([$id]);
+                $lines = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+
+            // Get dropdowns data
+            $stmt = $pdo->query("SELECT id, year_name, is_current FROM academic_years ORDER BY start_date DESC");
+            $years = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $stmt = $pdo->query("SELECT id, term_name FROM terms ORDER BY term_number");
+            $terms = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $stmt = $pdo->query("SELECT id, grade_name FROM grades WHERE is_active = 1 ORDER BY sort_order");
+            $grades = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $stmt = $pdo->query("SELECT id, campus_name FROM campuses WHERE is_active = 1 ORDER BY sort_order, campus_name");
+            $campuses = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Get fee items with category info
+            $stmt = $pdo->prepare("
+                SELECT fi.id, fi.code, fi.name, fi.default_amount, fc.name as category_name, fc.id as category_id, fc.category_type
+                FROM fee_items fi
+                LEFT JOIN fee_categories fc ON fc.id = fi.fee_category_id
+                WHERE fi.school_id = ? AND fi.is_active = 1
+                ORDER BY fc.sort_order, fi.name
+            ");
+            $stmt->execute([$schoolId]);
+            $fee_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            Response::view('finance/fee_structure_edit', [
+                'pageTitle' => $id ? 'Edit Fee Structure' : 'Create Fee Structure',
+                'structure' => $structure,
+                'lines' => $lines,
+                'years' => $years,
+                'terms' => $terms,
+                'grades' => $grades,
+                'campuses' => $campuses,
+                'fee_items' => $fee_items
+            ]);
+        } catch (Exception $e) {
+            error_log('Edit Fee Structure error: ' . $e->getMessage());
+            flash('error', 'Failed to load fee structure form');
+            Response::redirect('/finance/fee-structures');
+        }
+    }
+
+    public function saveFeeStructure()
+    {
+        // Unified save handler - calls store or update based on ID presence
+        if (!empty($_POST['id'])) {
+            return $this->updateFeeStructure($_POST['id']);
+        } else {
+            return $this->storeFeeStructure();
+        }
+    }
+
     public function storeFeeStructure()
     {
         if (!isAuthenticated()) {
@@ -609,30 +766,41 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
             $userId = $_SESSION['user_id'] ?? null;
 
             $stmt = $pdo->prepare("
-                INSERT INTO fee_structures (school_id, name, academic_year_id, grade_level_group_id, description, is_active, created_by, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+                INSERT INTO fee_structures (school_id, campus_id, academic_year_id, term_id, grade_id, name, status, prepared_by, notes, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, NOW())
             ");
             $stmt->execute([
                 $schoolId,
-                $_POST['name'],
+                $_POST['campus_id'] ?? 1,
                 $_POST['academic_year_id'],
-                $_POST['grade_level_group_id'] ?: null,
-                $_POST['description'] ?? null,
-                isset($_POST['is_active']) ? 1 : 0,
-                $userId
+                $_POST['term_id'],
+                $_POST['grade_id'],
+                $_POST['name'],
+                $userId,
+                $_POST['notes'] ?? null
             ]);
             $structureId = $pdo->lastInsertId();
 
-            // Add fee items
-            if (!empty($_POST['fee_items']) && is_array($_POST['fee_items'])) {
-                $stmt = $pdo->prepare("INSERT INTO fee_structure_items (fee_structure_id, fee_item_id, amount, created_at) VALUES (?, ?, ?, NOW())");
-                foreach ($_POST['fee_items'] as $itemId => $amount) {
-                    if ($amount > 0) {
-                        $stmt->execute([$structureId, $itemId, $amount]);
+            // Add fee structure lines
+            if (!empty($_POST['lines']) && is_array($_POST['lines'])) {
+                $stmt = $pdo->prepare("
+                    INSERT INTO fee_structure_lines (fee_structure_id, fee_item_id, amount, is_mandatory, applies_to_student_type, option_group, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, NOW())
+                ");
+                foreach ($_POST['lines'] as $line) {
+                    if (!empty($line['selected']) && !empty($line['fee_item_id'])) {
+                        $stmt->execute([
+                            $structureId,
+                            $line['fee_item_id'],
+                            floatval($line['amount'] ?? 0),
+                            isset($line['is_mandatory']) ? 1 : 0,
+                            $line['applies_to_student_type'] ?? 'all',
+                            $line['option_group'] ?? null
+                        ]);
                     }
                 }
             }
@@ -640,7 +808,7 @@ class FinanceController
             flash('success', 'Fee structure created successfully');
         } catch (Exception $e) {
             error_log('Store Fee Structure error: ' . $e->getMessage());
-            flash('error', 'Failed to create fee structure');
+            flash('error', 'Failed to create fee structure: ' . $e->getMessage());
         }
         Response::redirect('/finance/fee-structures');
     }
@@ -653,34 +821,43 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
-            $userId = $_SESSION['user_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("
                 UPDATE fee_structures
-                SET name = ?, academic_year_id = ?, grade_level_group_id = ?, description = ?, is_active = ?, updated_by = ?, updated_at = NOW()
+                SET name = ?, campus_id = ?, academic_year_id = ?, term_id = ?, grade_id = ?, notes = ?, updated_at = NOW()
                 WHERE id = ? AND school_id = ?
             ");
             $stmt->execute([
                 $_POST['name'],
+                $_POST['campus_id'] ?? 1,
                 $_POST['academic_year_id'],
-                $_POST['grade_level_group_id'] ?: null,
-                $_POST['description'] ?? null,
-                isset($_POST['is_active']) ? 1 : 0,
-                $userId,
+                $_POST['term_id'],
+                $_POST['grade_id'],
+                $_POST['notes'] ?? null,
                 $id,
                 $schoolId
             ]);
 
-            // Update fee items
-            $stmt = $pdo->prepare("DELETE FROM fee_structure_items WHERE fee_structure_id = ?");
+            // Update fee structure lines
+            $stmt = $pdo->prepare("DELETE FROM fee_structure_lines WHERE fee_structure_id = ?");
             $stmt->execute([$id]);
 
-            if (!empty($_POST['fee_items']) && is_array($_POST['fee_items'])) {
-                $stmt = $pdo->prepare("INSERT INTO fee_structure_items (fee_structure_id, fee_item_id, amount, created_at) VALUES (?, ?, ?, NOW())");
-                foreach ($_POST['fee_items'] as $itemId => $amount) {
-                    if ($amount > 0) {
-                        $stmt->execute([$id, $itemId, $amount]);
+            if (!empty($_POST['lines']) && is_array($_POST['lines'])) {
+                $stmt = $pdo->prepare("
+                    INSERT INTO fee_structure_lines (fee_structure_id, fee_item_id, amount, is_mandatory, applies_to_student_type, option_group, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, NOW())
+                ");
+                foreach ($_POST['lines'] as $line) {
+                    if (!empty($line['selected']) && !empty($line['fee_item_id'])) {
+                        $stmt->execute([
+                            $id,
+                            $line['fee_item_id'],
+                            floatval($line['amount'] ?? 0),
+                            isset($line['is_mandatory']) ? 1 : 0,
+                            $line['applies_to_student_type'] ?? 'all',
+                            $line['option_group'] ?? null
+                        ]);
                     }
                 }
             }
@@ -688,7 +865,7 @@ class FinanceController
             flash('success', 'Fee structure updated successfully');
         } catch (Exception $e) {
             error_log('Update Fee Structure error: ' . $e->getMessage());
-            flash('error', 'Failed to update fee structure');
+            flash('error', 'Failed to update fee structure: ' . $e->getMessage());
         }
         Response::redirect('/finance/fee-structures');
     }
@@ -701,9 +878,9 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
-            $stmt = $pdo->prepare("DELETE FROM fee_structure_items WHERE fee_structure_id = ?");
+            $stmt = $pdo->prepare("DELETE FROM fee_structure_lines WHERE fee_structure_id = ?");
             $stmt->execute([$id]);
 
             $stmt = $pdo->prepare("DELETE FROM fee_structures WHERE id = ? AND school_id = ?");
@@ -728,34 +905,46 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
+            // Get tariffs with zone and year info
             $stmt = $pdo->prepare("
                 SELECT tt.*,
+                    tz.zone_code,
                     tz.zone_name,
-                    ay.year_name as academic_year
+                    tz.min_distance_km,
+                    tz.max_distance_km,
+                    ay.year_name as academic_year,
+                    t.term_name
                 FROM transport_tariffs tt
-                LEFT JOIN transport_zones tz ON tz.id = tt.zone_id
+                LEFT JOIN transport_zones tz ON tz.id = tt.transport_zone_id
                 LEFT JOIN academic_years ay ON ay.id = tt.academic_year_id
+                LEFT JOIN terms t ON t.id = tt.term_id
                 WHERE tt.school_id = ?
-                ORDER BY ay.start_date DESC, tz.zone_name
+                ORDER BY ay.start_date DESC, tz.zone_name, tt.direction
             ");
             $stmt->execute([$schoolId]);
             $tariffs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $stmt = $pdo->prepare("SELECT id, zone_name, description FROM transport_zones WHERE school_id = ? AND is_active = 1 ORDER BY zone_name");
+            // Get zones for dropdown
+            $stmt = $pdo->prepare("SELECT id, zone_code, zone_name, min_distance_km, max_distance_km, description FROM transport_zones WHERE school_id = ? AND is_active = 1 ORDER BY zone_name");
             $stmt->execute([$schoolId]);
             $zones = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $stmt = $pdo->prepare("SELECT id, year_name FROM academic_years WHERE school_id = ? ORDER BY start_date DESC");
-            $stmt->execute([$schoolId]);
+            // Get academic years for dropdown
+            $stmt = $pdo->query("SELECT id, year_name, is_current FROM academic_years ORDER BY start_date DESC");
             $academicYears = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Get terms for dropdown
+            $stmt = $pdo->query("SELECT id, term_name FROM terms ORDER BY term_number");
+            $terms = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             Response::view('finance/transport_tariffs', [
                 'pageTitle' => 'Transport Tariffs',
                 'tariffs' => $tariffs,
                 'zones' => $zones,
-                'academicYears' => $academicYears
+                'academicYears' => $academicYears,
+                'terms' => $terms
             ]);
         } catch (Exception $e) {
             error_log('Transport Tariffs error: ' . $e->getMessage());
@@ -772,81 +961,74 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
             $userId = $_SESSION['user_id'] ?? null;
 
             $stmt = $pdo->prepare("
-                INSERT INTO transport_tariffs (school_id, zone_id, academic_year_id, amount_per_term, amount_one_way, is_active, created_by, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+                INSERT INTO transport_tariffs (school_id, academic_year_id, term_id, transport_zone_id, direction, amount, is_active, created_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
             ");
             $stmt->execute([
                 $schoolId,
-                $_POST['zone_id'],
                 $_POST['academic_year_id'],
-                $_POST['amount_per_term'] ?? 0,
-                $_POST['amount_one_way'] ?? 0,
-                isset($_POST['is_active']) ? 1 : 0,
+                $_POST['term_id'] ?: null,
+                $_POST['transport_zone_id'],
+                $_POST['direction'],
+                $_POST['amount'] ?? 0,
+                isset($_POST['is_active']) ? 1 : 1,
                 $userId
             ]);
 
-            if ($this->isAjax()) {
-                $this->jsonResponse(['success' => true, 'message' => 'Tariff created successfully']);
-            } else {
-                flash('success', 'Transport tariff created successfully');
-                Response::redirect('/finance/transport-tariffs');
-            }
+            flash('success', 'Transport tariff created successfully');
+            Response::redirect('/finance/transport-tariffs');
         } catch (Exception $e) {
             error_log('Store Tariff error: ' . $e->getMessage());
-            if ($this->isAjax()) {
-                $this->jsonResponse(['success' => false, 'message' => 'Failed to create tariff']);
-            } else {
-                flash('error', 'Failed to create transport tariff');
-                Response::redirect('/finance/transport-tariffs');
-            }
+            flash('error', 'Failed to create transport tariff');
+            Response::redirect('/finance/transport-tariffs');
         }
     }
 
-    public function updateTariff($id)
+    public function updateTariff($id = null)
     {
         if (!isAuthenticated()) {
             Response::redirect('/login');
         }
 
+        $id = $id ?? $_POST['id'] ?? null;
+        if (!$id) {
+            flash('error', 'No tariff ID provided');
+            Response::redirect('/finance/transport-tariffs');
+            return;
+        }
+
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
             $userId = $_SESSION['user_id'] ?? null;
 
             $stmt = $pdo->prepare("
                 UPDATE transport_tariffs
-                SET zone_id = ?, academic_year_id = ?, amount_per_term = ?, amount_one_way = ?, is_active = ?, updated_by = ?, updated_at = NOW()
+                SET academic_year_id = ?, term_id = ?, transport_zone_id = ?, direction = ?, amount = ?, is_active = ?, updated_by = ?, updated_at = NOW()
                 WHERE id = ? AND school_id = ?
             ");
             $stmt->execute([
-                $_POST['zone_id'],
                 $_POST['academic_year_id'],
-                $_POST['amount_per_term'] ?? 0,
-                $_POST['amount_one_way'] ?? 0,
+                $_POST['term_id'] ?: null,
+                $_POST['transport_zone_id'],
+                $_POST['direction'],
+                $_POST['amount'] ?? 0,
                 isset($_POST['is_active']) ? 1 : 0,
                 $userId,
                 $id,
                 $schoolId
             ]);
 
-            if ($this->isAjax()) {
-                $this->jsonResponse(['success' => true, 'message' => 'Tariff updated successfully']);
-            } else {
-                flash('success', 'Transport tariff updated successfully');
-                Response::redirect('/finance/transport-tariffs');
-            }
+            flash('success', 'Transport tariff updated successfully');
+            Response::redirect('/finance/transport-tariffs');
         } catch (Exception $e) {
             error_log('Update Tariff error: ' . $e->getMessage());
-            if ($this->isAjax()) {
-                $this->jsonResponse(['success' => false, 'message' => 'Failed to update tariff']);
-            } else {
-                flash('error', 'Failed to update transport tariff');
-                Response::redirect('/finance/transport-tariffs');
-            }
+            flash('error', 'Failed to update transport tariff');
+            Response::redirect('/finance/transport-tariffs');
         }
     }
 
@@ -858,7 +1040,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("DELETE FROM transport_tariffs WHERE id = ? AND school_id = ?");
             $stmt->execute([$id, $schoolId]);
@@ -890,79 +1072,74 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
             $userId = $_SESSION['user_id'] ?? null;
 
             $stmt = $pdo->prepare("
-                INSERT INTO transport_zones (school_id, zone_name, description, areas_covered, is_active, created_by, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, NOW())
+                INSERT INTO transport_zones (school_id, zone_code, zone_name, min_distance_km, max_distance_km, description, is_active, created_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
             ");
             $stmt->execute([
                 $schoolId,
+                strtoupper($_POST['zone_code']),
                 $_POST['zone_name'],
+                $_POST['min_distance_km'] ?: null,
+                $_POST['max_distance_km'] ?: null,
                 $_POST['description'] ?? null,
-                $_POST['areas_covered'] ?? null,
-                isset($_POST['is_active']) ? 1 : 0,
+                isset($_POST['is_active']) ? 1 : 1,
                 $userId
             ]);
 
-            if ($this->isAjax()) {
-                $this->jsonResponse(['success' => true, 'message' => 'Zone created successfully']);
-            } else {
-                flash('success', 'Transport zone created successfully');
-                Response::redirect('/finance/transport-tariffs');
-            }
+            flash('success', 'Transport zone created successfully');
+            Response::redirect('/finance/transport-tariffs');
         } catch (Exception $e) {
             error_log('Store Zone error: ' . $e->getMessage());
-            if ($this->isAjax()) {
-                $this->jsonResponse(['success' => false, 'message' => 'Failed to create zone']);
-            } else {
-                flash('error', 'Failed to create transport zone');
-                Response::redirect('/finance/transport-tariffs');
-            }
+            flash('error', 'Failed to create transport zone');
+            Response::redirect('/finance/transport-tariffs');
         }
     }
 
-    public function updateZone($id)
+    public function updateZone($id = null)
     {
         if (!isAuthenticated()) {
             Response::redirect('/login');
         }
 
+        $id = $id ?? $_POST['id'] ?? null;
+        if (!$id) {
+            flash('error', 'No zone ID provided');
+            Response::redirect('/finance/transport-tariffs');
+            return;
+        }
+
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
             $userId = $_SESSION['user_id'] ?? null;
 
             $stmt = $pdo->prepare("
                 UPDATE transport_zones
-                SET zone_name = ?, description = ?, areas_covered = ?, is_active = ?, updated_by = ?, updated_at = NOW()
+                SET zone_code = ?, zone_name = ?, min_distance_km = ?, max_distance_km = ?, description = ?, is_active = ?, updated_by = ?, updated_at = NOW()
                 WHERE id = ? AND school_id = ?
             ");
             $stmt->execute([
+                strtoupper($_POST['zone_code']),
                 $_POST['zone_name'],
+                $_POST['min_distance_km'] ?: null,
+                $_POST['max_distance_km'] ?: null,
                 $_POST['description'] ?? null,
-                $_POST['areas_covered'] ?? null,
                 isset($_POST['is_active']) ? 1 : 0,
                 $userId,
                 $id,
                 $schoolId
             ]);
 
-            if ($this->isAjax()) {
-                $this->jsonResponse(['success' => true, 'message' => 'Zone updated successfully']);
-            } else {
-                flash('success', 'Transport zone updated successfully');
-                Response::redirect('/finance/transport-tariffs');
-            }
+            flash('success', 'Transport zone updated successfully');
+            Response::redirect('/finance/transport-tariffs');
         } catch (Exception $e) {
             error_log('Update Zone error: ' . $e->getMessage());
-            if ($this->isAjax()) {
-                $this->jsonResponse(['success' => false, 'message' => 'Failed to update zone']);
-            } else {
-                flash('error', 'Failed to update transport zone');
-                Response::redirect('/finance/transport-tariffs');
-            }
+            flash('error', 'Failed to update transport zone');
+            Response::redirect('/finance/transport-tariffs');
         }
     }
 
@@ -974,10 +1151,10 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             // Check if zone has tariffs
-            $stmt = $pdo->prepare("SELECT COUNT(*) as cnt FROM transport_tariffs WHERE zone_id = ?");
+            $stmt = $pdo->prepare("SELECT COUNT(*) as cnt FROM transport_tariffs WHERE transport_zone_id = ?");
             $stmt->execute([$id]);
             $result = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -1022,7 +1199,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $status = Request::get('status', '');
             $fromDate = Request::get('from_date', '');
@@ -1069,8 +1246,7 @@ class FinanceController
             $stmt->execute($params);
             $invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $stmt = $pdo->prepare("SELECT id, grade_name FROM grades WHERE school_id = ? ORDER BY sort_order");
-            $stmt->execute([$schoolId]);
+            $stmt = $pdo->query("SELECT id, grade_name FROM grades WHERE is_active = 1 ORDER BY sort_order");
             $grades = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             Response::view('finance/invoices', [
@@ -1099,7 +1275,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("
                 SELECT i.*,
@@ -1160,14 +1336,12 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
-            $stmt = $pdo->prepare("SELECT id, year_name FROM academic_years WHERE school_id = ? ORDER BY start_date DESC");
-            $stmt->execute([$schoolId]);
+            $stmt = $pdo->query("SELECT id, year_name FROM academic_years ORDER BY start_date DESC");
             $academicYears = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $stmt = $pdo->prepare("SELECT id, grade_name FROM grades WHERE school_id = ? AND is_active = 1 ORDER BY sort_order");
-            $stmt->execute([$schoolId]);
+            $stmt = $pdo->query("SELECT id, grade_name FROM grades WHERE is_active = 1 ORDER BY sort_order");
             $grades = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             $stmt = $pdo->prepare("
@@ -1201,7 +1375,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
             $userId = $_SESSION['user_id'] ?? null;
 
             $academicYearId = $_POST['academic_year_id'];
@@ -1213,7 +1387,7 @@ class FinanceController
             // Get fee structure items
             $stmt = $pdo->prepare("
                 SELECT fsi.*, fi.name as item_name
-                FROM fee_structure_items fsi
+                FROM fee_structure_lines fsi
                 LEFT JOIN fee_items fi ON fi.id = fsi.fee_item_id
                 WHERE fsi.fee_structure_id = ?
             ");
@@ -1295,7 +1469,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("
                 SELECT cn.*,
@@ -1304,11 +1478,10 @@ class FinanceController
                     COALESCE(s.first_name, a.first_name) as student_first_name,
                     COALESCE(s.last_name, a.last_name) as student_last_name,
                     COALESCE(s.admission_number, a.admission_number) as admission_number,
-                    u.first_name as created_by_first_name,
-                    u.last_name as created_by_last_name
+                    u.full_name as created_by_name
                 FROM credit_notes cn
                 LEFT JOIN invoices i ON i.id = cn.invoice_id
-                LEFT JOIN student_fee_accounts sfa ON sfa.id = cn.student_fee_account_id
+                LEFT JOIN student_fee_accounts sfa ON sfa.id = cn.fee_account_id
                 LEFT JOIN students s ON s.id = sfa.student_id
                 LEFT JOIN applicants a ON a.id = sfa.applicant_id
                 LEFT JOIN users u ON u.id = cn.created_by
@@ -1365,7 +1538,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("
                 SELECT cn.*,
@@ -1374,10 +1547,8 @@ class FinanceController
                     COALESCE(s.first_name, a.first_name) as student_first_name,
                     COALESCE(s.last_name, a.last_name) as student_last_name,
                     COALESCE(s.admission_number, a.admission_number) as admission_number,
-                    u.first_name as created_by_first_name,
-                    u.last_name as created_by_last_name,
-                    u2.first_name as approved_by_first_name,
-                    u2.last_name as approved_by_last_name
+                    u.full_name as created_by_name,
+                    u2.full_name as approved_by_name
                 FROM credit_notes cn
                 LEFT JOIN invoices i ON i.id = cn.invoice_id
                 LEFT JOIN student_fee_accounts sfa ON sfa.id = cn.student_fee_account_id
@@ -1415,7 +1586,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
             $userId = $_SESSION['user_id'] ?? null;
 
             $feeAccountId = $_POST['fee_account_id'] ?? $_POST['student_fee_account_id'] ?? null;
@@ -1460,7 +1631,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("SELECT status FROM credit_notes WHERE id = ? AND school_id = ?");
             $stmt->execute([$id, $schoolId]);
@@ -1515,7 +1686,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("SELECT status FROM credit_notes WHERE id = ? AND school_id = ?");
             $stmt->execute([$id, $schoolId]);
@@ -1559,7 +1730,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
             $userId = $_SESSION['user_id'] ?? null;
 
             $stmt = $pdo->prepare("SELECT * FROM credit_notes WHERE id = ? AND school_id = ?");
@@ -1604,7 +1775,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("SELECT * FROM credit_notes WHERE id = ? AND school_id = ?");
             $stmt->execute([$id, $schoolId]);
@@ -1670,7 +1841,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $status = Request::get('status', '');
             $paymentMethod = Request::get('payment_method', '');
@@ -1712,12 +1883,12 @@ class FinanceController
                     COALESCE(s.first_name, a.first_name) as student_first_name,
                     COALESCE(s.last_name, a.last_name) as student_last_name,
                     COALESCE(s.admission_number, a.admission_number) as admission_number,
-                    i.invoice_number
+                    pm.name as payment_method_name
                 FROM payments p
                 LEFT JOIN student_fee_accounts sfa ON sfa.id = p.student_fee_account_id
                 LEFT JOIN students s ON s.id = sfa.student_id
                 LEFT JOIN applicants a ON a.id = sfa.applicant_id
-                LEFT JOIN invoices i ON i.id = p.invoice_id
+                LEFT JOIN payment_methods pm ON pm.code = p.payment_method
                 WHERE {$whereClause}
                 ORDER BY p.payment_date DESC, p.created_at DESC
                 LIMIT 500
@@ -1725,8 +1896,7 @@ class FinanceController
             $stmt->execute($params);
             $payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $stmt = $pdo->prepare("SELECT id, code, name FROM payment_methods WHERE school_id = ? AND is_active = 1 ORDER BY name");
-            $stmt->execute([$schoolId]);
+            $stmt = $pdo->query("SELECT id, code, name FROM payment_methods WHERE is_active = 1 ORDER BY sort_order, name");
             $paymentMethods = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             // Calculate totals
@@ -1762,7 +1932,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("
                 SELECT p.*,
@@ -1770,16 +1940,13 @@ class FinanceController
                     COALESCE(s.first_name, a.first_name) as student_first_name,
                     COALESCE(s.last_name, a.last_name) as student_last_name,
                     COALESCE(s.admission_number, a.admission_number) as admission_number,
-                    i.invoice_number,
                     pm.name as payment_method_name,
-                    u.first_name as received_by_first_name,
-                    u.last_name as received_by_last_name
+                    u.full_name as received_by_name
                 FROM payments p
                 LEFT JOIN student_fee_accounts sfa ON sfa.id = p.student_fee_account_id
                 LEFT JOIN students s ON s.id = sfa.student_id
                 LEFT JOIN applicants a ON a.id = sfa.applicant_id
-                LEFT JOIN invoices i ON i.id = p.invoice_id
-                LEFT JOIN payment_methods pm ON pm.id = p.payment_method_id
+                LEFT JOIN payment_methods pm ON pm.code = p.payment_method
                 LEFT JOIN users u ON u.id = p.received_by
                 WHERE p.id = ? AND p.school_id = ?
             ");
@@ -1811,7 +1978,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $feeAccountId = Request::get('fee_account_id');
             $invoiceId = Request::get('invoice_id');
@@ -1838,8 +2005,7 @@ class FinanceController
                 $invoice = $stmt->fetch(PDO::FETCH_ASSOC);
             }
 
-            $stmt = $pdo->prepare("SELECT id, code, name FROM payment_methods WHERE school_id = ? AND is_active = 1 ORDER BY sort_order, name");
-            $stmt->execute([$schoolId]);
+            $stmt = $pdo->query("SELECT id, code, name FROM payment_methods WHERE is_active = 1 ORDER BY sort_order, name");
             $paymentMethods = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             $stmt = $pdo->prepare("SELECT id, account_name, account_number, bank_name FROM bank_accounts WHERE school_id = ? AND is_active = 1 ORDER BY account_name");
@@ -1868,7 +2034,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
             $userId = $_SESSION['user_id'] ?? null;
 
             $feeAccountId = $_POST['student_fee_account_id'];
@@ -1886,11 +2052,11 @@ class FinanceController
             $pm = $stmt->fetch(PDO::FETCH_ASSOC);
 
             $stmt = $pdo->prepare("
-                INSERT INTO payments (school_id, student_fee_account_id, invoice_id, receipt_number, payment_date, amount, payment_method, payment_method_id, reference_number, notes, status, received_by, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, NOW())
+                INSERT INTO payments (school_id, student_fee_account_id, receipt_number, payment_date, amount, payment_method, payment_method_id, reference_number, notes, status, received_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, NOW())
             ");
             $stmt->execute([
-                $schoolId, $feeAccountId, $invoiceId, $receiptNumber, $paymentDate, $amount,
+                $schoolId, $feeAccountId, $receiptNumber, $paymentDate, $amount,
                 $pm['code'] ?? 'cash', $paymentMethodId, $referenceNumber, $notes, $userId
             ]);
             $paymentId = $pdo->lastInsertId();
@@ -1939,7 +2105,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $status = Request::get('status', '');
             $balanceType = Request::get('balance_type', '');
@@ -1985,8 +2151,7 @@ class FinanceController
             $stmt->execute($params);
             $accounts = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $stmt = $pdo->prepare("SELECT id, grade_name FROM grades WHERE school_id = ? ORDER BY sort_order");
-            $stmt->execute([$schoolId]);
+            $stmt = $pdo->query("SELECT id, grade_name FROM grades WHERE is_active = 1 ORDER BY sort_order");
             $grades = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             $stmt = $pdo->prepare("
@@ -2019,7 +2184,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("
                 SELECT sfa.*,
@@ -2100,7 +2265,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("
                 SELECT fa.*,
@@ -2134,7 +2299,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $stmt = $pdo->prepare("SELECT * FROM family_accounts WHERE id = ? AND school_id = ?");
             $stmt->execute([$id, $schoolId]);
@@ -2180,7 +2345,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
             $userId = $_SESSION['user_id'] ?? null;
 
             $stmt = $pdo->prepare("
@@ -2219,13 +2384,13 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $fromDate = Request::get('from_date', date('Y-m-01'));
             $toDate = Request::get('to_date', date('Y-m-d'));
             $paymentMethod = Request::get('payment_method', '');
 
-            $where = ['p.school_id = ?', "p.status = 'completed'"];
+            $where = ['p.school_id = ?', "p.status IN ('completed', 'confirmed')"];
             $params = [$schoolId];
 
             if (!empty($fromDate)) {
@@ -2267,12 +2432,11 @@ class FinanceController
             $stmt->execute($params);
             $total = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            $stmt = $pdo->prepare("SELECT id, code, name FROM payment_methods WHERE school_id = ? ORDER BY name");
-            $stmt->execute([$schoolId]);
+            $stmt = $pdo->query("SELECT id, code, name FROM payment_methods WHERE is_active = 1 ORDER BY sort_order, name");
             $paymentMethods = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $stmt = $pdo->prepare("SELECT id, grade_name FROM grades WHERE school_id = ? ORDER BY sort_order");
-            $stmt->execute([$schoolId]);
+            // Grades don't have school_id - get all active grades
+            $stmt = $pdo->query("SELECT id, grade_name FROM grades WHERE is_active = 1 ORDER BY sort_order");
             $grades = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             Response::view('finance/reports/collection', [
@@ -2299,7 +2463,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $minBalance = Request::get('min_balance', '');
 
@@ -2350,8 +2514,7 @@ class FinanceController
             $stmt->execute($params);
             $total = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            $stmt = $pdo->prepare("SELECT id, grade_name FROM grades WHERE school_id = ? ORDER BY sort_order");
-            $stmt->execute([$schoolId]);
+            $stmt = $pdo->query("SELECT id, grade_name FROM grades WHERE is_active = 1 ORDER BY sort_order");
             $grades = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             Response::view('finance/reports/outstanding', [
@@ -2377,7 +2540,7 @@ class FinanceController
 
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $fromDate = Request::get('from_date', date('Y-01-01'));
             $toDate = Request::get('to_date', date('Y-m-d'));
@@ -2435,7 +2598,7 @@ class FinanceController
     {
         try {
             $pdo = Database::getTenantConnection();
-            $schoolId = $_SESSION['school_id'] ?? null;
+            $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
             $search = $_GET['q'] ?? $_GET['search'] ?? '';
 
             if (strlen($search) < 2) {
