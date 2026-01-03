@@ -39,12 +39,12 @@ class FinanceController
             $stmt->execute([$schoolId, $currentYear['id']]);
             $stats['total_invoiced'] = $stmt->fetchColumn() ?: 0;
 
-            // Total collected for current term
+            // Total collected (confirmed/completed payments)
             $stmt = $pdo->prepare("
                 SELECT COALESCE(SUM(amount), 0) as total
                 FROM payments
                 WHERE school_id = ?
-                AND status = 'completed'
+                AND status IN ('completed', 'confirmed')
             ");
             $stmt->execute([$schoolId]);
             $stats['total_collected'] = $stmt->fetchColumn() ?: 0;
@@ -78,7 +78,7 @@ class FinanceController
                 LEFT JOIN students s ON s.id = sfa.student_id
                 LEFT JOIN applicants a ON a.id = sfa.applicant_id
                 LEFT JOIN payment_methods pm ON pm.code = p.payment_method
-                WHERE p.school_id = ? AND p.status = 'completed'
+                WHERE p.school_id = ? AND p.status IN ('completed', 'confirmed')
                 ORDER BY p.payment_date DESC, p.created_at DESC
                 LIMIT 10
             ");
