@@ -2,6 +2,14 @@
 /**
  * Payments History - Content
  */
+
+// Extract filters from array
+$search = $filters['search'] ?? '';
+$status = $filters['status'] ?? '';
+$paymentMethod = $filters['payment_method'] ?? '';
+$fromDate = $filters['from_date'] ?? '';
+$toDate = $filters['to_date'] ?? '';
+$accountId = $filters['account'] ?? '';
 ?>
 
 <div class="page-header d-print-none">
@@ -35,7 +43,7 @@
                         <div class="d-flex align-items-center">
                             <div class="subheader">Total Payments</div>
                         </div>
-                        <div class="h1 mb-0"><?= number_format($totalPayments ?? 0) ?></div>
+                        <div class="h1 mb-0"><?= number_format($totals['count'] ?? 0) ?></div>
                     </div>
                 </div>
             </div>
@@ -45,7 +53,7 @@
                         <div class="d-flex align-items-center">
                             <div class="subheader">Total Amount (Confirmed)</div>
                         </div>
-                        <div class="h1 mb-0 text-success">KES <?= number_format($totalAmount ?? 0, 2) ?></div>
+                        <div class="h1 mb-0 text-success">KES <?= number_format($totals['total_amount'] ?? 0, 2) ?></div>
                     </div>
                 </div>
             </div>
@@ -55,18 +63,21 @@
         <div class="card mb-3">
             <div class="card-body">
                 <form method="GET" action="/finance/payments" class="row g-3">
+                    <?php if ($accountId): ?>
+                    <input type="hidden" name="account" value="<?= e($accountId) ?>">
+                    <?php endif; ?>
                     <div class="col-md-3">
                         <label class="form-label">Search</label>
                         <input type="text" name="search" class="form-control" placeholder="Receipt, reference, name..."
-                               value="<?= e($search ?? '') ?>">
+                               value="<?= e($search) ?>">
                     </div>
                     <div class="col-md-2">
                         <label class="form-label">Status</label>
                         <select name="status" class="form-select">
                             <option value="">All Statuses</option>
-                            <option value="confirmed" <?= ($status ?? '') === 'confirmed' ? 'selected' : '' ?>>Confirmed</option>
-                            <option value="pending" <?= ($status ?? '') === 'pending' ? 'selected' : '' ?>>Pending</option>
-                            <option value="cancelled" <?= ($status ?? '') === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
+                            <option value="confirmed" <?= $status === 'confirmed' ? 'selected' : '' ?>>Confirmed</option>
+                            <option value="pending" <?= $status === 'pending' ? 'selected' : '' ?>>Pending</option>
+                            <option value="cancelled" <?= $status === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
                         </select>
                     </div>
                     <div class="col-md-2">
@@ -74,25 +85,32 @@
                         <select name="payment_method" class="form-select">
                             <option value="">All Methods</option>
                             <?php foreach ($paymentMethods ?? [] as $method): ?>
-                            <option value="<?= e($method) ?>" <?= ($paymentMethod ?? '') === $method ? 'selected' : '' ?>>
-                                <?= ucfirst(str_replace('_', ' ', $method)) ?>
+                            <option value="<?= e($method['code']) ?>" <?= $paymentMethod === $method['code'] ? 'selected' : '' ?>>
+                                <?= e($method['name']) ?>
                             </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="col-md-2">
                         <label class="form-label">Date From</label>
-                        <input type="date" name="date_from" class="form-control" value="<?= e($dateFrom ?? '') ?>">
+                        <input type="date" name="from_date" class="form-control" value="<?= e($fromDate) ?>">
                     </div>
                     <div class="col-md-2">
                         <label class="form-label">Date To</label>
-                        <input type="date" name="date_to" class="form-control" value="<?= e($dateTo ?? '') ?>">
+                        <input type="date" name="to_date" class="form-control" value="<?= e($toDate) ?>">
                     </div>
                     <div class="col-md-1 d-flex align-items-end">
                         <button type="submit" class="btn btn-primary w-100">
                             <i class="ti ti-search"></i>
                         </button>
                     </div>
+                    <?php if ($accountId): ?>
+                    <div class="col-12">
+                        <a href="/finance/payments" class="btn btn-sm btn-secondary">
+                            <i class="ti ti-x me-1"></i>Clear Account Filter
+                        </a>
+                    </div>
+                    <?php endif; ?>
                 </form>
             </div>
         </div>
@@ -154,11 +172,13 @@
                                 <td>
                                     <div class="d-flex align-items-center">
                                         <?php
-                                        $payerName = $payment['payer_first_name'] . ' ' . $payment['payer_last_name'];
-                                        $payerRef = $payment['payer_ref'] ?? '';
+                                        $firstName = $payment['student_first_name'] ?? '';
+                                        $lastName = $payment['student_last_name'] ?? '';
+                                        $payerName = trim($firstName . ' ' . $lastName) ?: 'N/A';
+                                        $payerRef = $payment['admission_number'] ?? '';
                                         ?>
                                         <span class="avatar avatar-sm bg-primary-lt me-2">
-                                            <?= strtoupper(substr($payment['payer_first_name'] ?? 'N', 0, 1)) ?>
+                                            <?= strtoupper(substr($firstName ?: 'N', 0, 1)) ?>
                                         </span>
                                         <div>
                                             <div><?= e($payerName) ?></div>

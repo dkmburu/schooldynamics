@@ -2,6 +2,13 @@
 /**
  * Invoices List - Content
  */
+
+// Extract filters from array
+$search = $filters['search'] ?? '';
+$status = $filters['status'] ?? '';
+$fromDate = $filters['from_date'] ?? '';
+$toDate = $filters['to_date'] ?? '';
+$accountId = $filters['account'] ?? '';
 ?>
 
 <div class="page-header d-print-none">
@@ -30,18 +37,21 @@
         <div class="card">
             <div class="card-header">
                 <form method="GET" class="row g-2 align-items-center">
+                    <?php if ($accountId): ?>
+                    <input type="hidden" name="account" value="<?= e($accountId) ?>">
+                    <?php endif; ?>
                     <div class="col-auto">
                         <input type="text" name="search" class="form-control form-control-sm"
-                               placeholder="Search invoice #, student..." value="<?= e($search ?? '') ?>">
+                               placeholder="Search invoice #, student..." value="<?= e($search) ?>">
                     </div>
                     <div class="col-auto">
                         <select name="status" class="form-select form-select-sm">
                             <option value="">All Status</option>
-                            <option value="draft">Draft</option>
-                            <option value="sent">Sent</option>
-                            <option value="partial">Partial</option>
-                            <option value="paid">Paid</option>
-                            <option value="overdue">Overdue</option>
+                            <option value="draft" <?= $status === 'draft' ? 'selected' : '' ?>>Draft</option>
+                            <option value="sent" <?= $status === 'sent' ? 'selected' : '' ?>>Sent</option>
+                            <option value="partial" <?= $status === 'partial' ? 'selected' : '' ?>>Partial</option>
+                            <option value="paid" <?= $status === 'paid' ? 'selected' : '' ?>>Paid</option>
+                            <option value="overdue" <?= $status === 'overdue' ? 'selected' : '' ?>>Overdue</option>
                         </select>
                     </div>
                     <div class="col-auto">
@@ -49,6 +59,13 @@
                             <i class="ti ti-search me-1"></i>Search
                         </button>
                     </div>
+                    <?php if ($accountId): ?>
+                    <div class="col-auto">
+                        <a href="/finance/invoices" class="btn btn-sm btn-secondary">
+                            <i class="ti ti-x me-1"></i>Clear Filter
+                        </a>
+                    </div>
+                    <?php endif; ?>
                 </form>
             </div>
             <div class="card-body">
@@ -88,9 +105,9 @@
                                 // Determine person name (applicant or student)
                                 $isApplicant = !empty($inv['applicant_id']);
                                 $personName = $isApplicant
-                                    ? trim($inv['applicant_first_name'] . ' ' . $inv['applicant_last_name'])
-                                    : trim($inv['student_first_name'] . ' ' . $inv['student_last_name']);
-                                $personRef = $isApplicant ? $inv['application_ref'] : $inv['admission_number'];
+                                    ? trim(($inv['applicant_first_name'] ?? '') . ' ' . ($inv['applicant_last_name'] ?? ''))
+                                    : trim(($inv['student_first_name'] ?? '') . ' ' . ($inv['student_last_name'] ?? ''));
+                                $personRef = $isApplicant ? ($inv['application_ref'] ?? '-') : ($inv['admission_number'] ?? '-');
                                 $personGrade = $inv['applicant_grade'] ?? 'N/A';
 
                                 // Status badge color

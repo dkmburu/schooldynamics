@@ -1205,10 +1205,15 @@ class FinanceController
             $fromDate = Request::get('from_date', '');
             $toDate = Request::get('to_date', '');
             $search = Request::get('search', '');
+            $accountId = Request::get('account', '');
 
             $where = ['i.school_id = ?'];
             $params = [$schoolId];
 
+            if (!empty($accountId)) {
+                $where[] = 'i.student_fee_account_id = ?';
+                $params[] = $accountId;
+            }
             if (!empty($status)) {
                 $where[] = 'i.status = ?';
                 $params[] = $status;
@@ -1232,13 +1237,19 @@ class FinanceController
             $stmt = $pdo->prepare("
                 SELECT i.*,
                     sfa.account_number,
-                    COALESCE(s.first_name, a.first_name) as student_first_name,
-                    COALESCE(s.last_name, a.last_name) as student_last_name,
-                    COALESCE(s.admission_number, a.admission_number) as admission_number
+                    sfa.applicant_id,
+                    s.first_name as student_first_name,
+                    s.last_name as student_last_name,
+                    s.admission_number,
+                    a.first_name as applicant_first_name,
+                    a.last_name as applicant_last_name,
+                    a.application_ref,
+                    g.grade_name as applicant_grade
                 FROM invoices i
                 LEFT JOIN student_fee_accounts sfa ON sfa.id = i.student_fee_account_id
                 LEFT JOIN students s ON s.id = sfa.student_id
                 LEFT JOIN applicants a ON a.id = sfa.applicant_id
+                LEFT JOIN grades g ON g.id = a.grade_applying_for_id
                 WHERE {$whereClause}
                 ORDER BY i.created_at DESC
                 LIMIT 500
@@ -1257,7 +1268,8 @@ class FinanceController
                     'status' => $status,
                     'from_date' => $fromDate,
                     'to_date' => $toDate,
-                    'search' => $search
+                    'search' => $search,
+                    'account' => $accountId
                 ]
             ]);
         } catch (Exception $e) {
@@ -1280,15 +1292,27 @@ class FinanceController
             $stmt = $pdo->prepare("
                 SELECT i.*,
                     sfa.account_number,
-                    COALESCE(s.first_name, a.first_name) as student_first_name,
-                    COALESCE(s.last_name, a.last_name) as student_last_name,
-                    COALESCE(s.admission_number, a.admission_number) as admission_number,
-                    ay.year_name as academic_year
+                    sfa.applicant_id,
+                    s.first_name as student_first_name,
+                    s.last_name as student_last_name,
+                    s.admission_number,
+                    a.first_name as applicant_first_name,
+                    a.last_name as applicant_last_name,
+                    a.application_ref,
+                    ay.year_name,
+                    t.term_name,
+                    g_s.grade_name as student_grade,
+                    g_a.grade_name as applicant_grade
                 FROM invoices i
                 LEFT JOIN student_fee_accounts sfa ON sfa.id = i.student_fee_account_id
                 LEFT JOIN students s ON s.id = sfa.student_id
                 LEFT JOIN applicants a ON a.id = sfa.applicant_id
                 LEFT JOIN academic_years ay ON ay.id = i.academic_year_id
+                LEFT JOIN terms t ON t.id = i.term_id
+                LEFT JOIN student_enrollments se ON se.student_id = s.id AND se.is_current = 1
+                LEFT JOIN streams st ON st.id = se.stream_id
+                LEFT JOIN grades g_s ON g_s.id = st.grade_id
+                LEFT JOIN grades g_a ON g_a.id = a.grade_applying_for_id
                 WHERE i.id = ? AND i.school_id = ?
             ");
             $stmt->execute([$id, $schoolId]);
@@ -1300,8 +1324,20 @@ class FinanceController
                 return;
             }
 
+            // Get school info for invoice header
+            $stmt = $pdo->prepare("SELECT * FROM campuses WHERE id = ? LIMIT 1");
+            $stmt->execute([$_SESSION['current_campus_id'] ?? 1]);
+            $campus = $stmt->fetch(PDO::FETCH_ASSOC);
+            $school = [
+                'school_name' => $campus['campus_name'] ?? 'School Name',
+                'address' => $campus['address'] ?? '',
+                'phone' => $campus['phone'] ?? '',
+                'email' => $campus['email'] ?? ''
+            ];
+
+            // Get invoice lines
             $stmt = $pdo->prepare("
-                SELECT il.*, fi.name as fee_item_name, fc.name as category_name
+                SELECT il.*, fi.name as fee_item_name, fi.code as fee_item_code, fc.name as category_name
                 FROM invoice_lines il
                 LEFT JOIN fee_items fi ON fi.id = il.fee_item_id
                 LEFT JOIN fee_categories fc ON fc.id = fi.fee_category_id
@@ -1311,15 +1347,23 @@ class FinanceController
             $stmt->execute([$id]);
             $lines = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $stmt = $pdo->prepare("SELECT * FROM payments WHERE invoice_id = ? ORDER BY payment_date DESC");
-            $stmt->execute([$id]);
+            // Get payments for this account (payments are linked to fee account, not invoice)
+            $stmt = $pdo->prepare("
+                SELECT p.*, pm.name as method_name
+                FROM payments p
+                LEFT JOIN payment_methods pm ON pm.code = p.payment_method
+                WHERE p.student_fee_account_id = ? AND p.status = 'confirmed'
+                ORDER BY p.payment_date DESC
+            ");
+            $stmt->execute([$invoice['student_fee_account_id']]);
             $payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            Response::view('finance/invoice_view', [
+            Response::view('finance/view_invoice', [
                 'pageTitle' => 'Invoice ' . $invoice['invoice_number'],
                 'invoice' => $invoice,
                 'lines' => $lines,
-                'payments' => $payments
+                'payments' => $payments,
+                'school' => $school
             ]);
         } catch (Exception $e) {
             error_log('View Invoice error: ' . $e->getMessage());
@@ -1338,17 +1382,36 @@ class FinanceController
             $pdo = Database::getTenantConnection();
             $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
-            $stmt = $pdo->query("SELECT id, year_name FROM academic_years ORDER BY start_date DESC");
-            $academicYears = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            // Get current academic year
+            $stmt = $pdo->query("SELECT id, year_name FROM academic_years WHERE is_current = 1 LIMIT 1");
+            $currentYear = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$currentYear) {
+                $stmt = $pdo->query("SELECT id, year_name FROM academic_years ORDER BY start_date DESC LIMIT 1");
+                $currentYear = $stmt->fetch(PDO::FETCH_ASSOC);
+            }
 
+            // Get current term
+            $stmt = $pdo->query("SELECT id, term_name FROM terms WHERE is_current = 1 LIMIT 1");
+            $currentTerm = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$currentTerm) {
+                $stmt = $pdo->query("SELECT id, term_name FROM terms ORDER BY term_number LIMIT 1");
+                $currentTerm = $stmt->fetch(PDO::FETCH_ASSOC);
+            }
+
+            // Get campuses
+            $stmt = $pdo->query("SELECT id, campus_name FROM campuses WHERE is_active = 1 ORDER BY campus_name");
+            $campuses = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Get grades
             $stmt = $pdo->query("SELECT id, grade_name FROM grades WHERE is_active = 1 ORDER BY sort_order");
             $grades = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+            // Get fee structures
             $stmt = $pdo->prepare("
-                SELECT fs.id, fs.name, glg.group_name as grade_group
+                SELECT fs.id, fs.name, g.grade_name as grade_group
                 FROM fee_structures fs
-                LEFT JOIN grade_level_groups glg ON glg.id = fs.grade_level_group_id
-                WHERE fs.school_id = ? AND fs.is_active = 1
+                LEFT JOIN grades g ON g.id = fs.grade_id
+                WHERE fs.school_id = ? AND fs.status = 'published'
                 ORDER BY fs.name
             ");
             $stmt->execute([$schoolId]);
@@ -1356,7 +1419,9 @@ class FinanceController
 
             Response::view('finance/generate_invoices', [
                 'pageTitle' => 'Generate Invoices',
-                'academicYears' => $academicYears,
+                'current_year' => $currentYear,
+                'current_term' => $currentTerm,
+                'campuses' => $campuses,
                 'grades' => $grades,
                 'feeStructures' => $feeStructures
             ]);
@@ -1378,79 +1443,136 @@ class FinanceController
             $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
             $userId = $_SESSION['user_id'] ?? null;
 
+            // Get form data
             $academicYearId = $_POST['academic_year_id'];
             $termId = $_POST['term_id'] ?? null;
-            $gradeId = $_POST['grade_id'] ?? null;
-            $feeStructureId = $_POST['fee_structure_id'];
+            $campusId = $_POST['campus_id'] ?? null;
+            $gradeIds = $_POST['grade_ids'] ?? [];
+            $invoiceDate = $_POST['invoice_date'] ?? date('Y-m-d');
             $dueDate = $_POST['due_date'];
+            $skipExisting = isset($_POST['skip_existing']);
 
-            // Get fee structure items
-            $stmt = $pdo->prepare("
-                SELECT fsi.*, fi.name as item_name
-                FROM fee_structure_lines fsi
-                LEFT JOIN fee_items fi ON fi.id = fsi.fee_item_id
-                WHERE fsi.fee_structure_id = ?
-            ");
-            $stmt->execute([$feeStructureId]);
-            $structureItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            if (empty($structureItems)) {
-                flash('error', 'No fee items in selected structure');
+            if (empty($gradeIds)) {
+                flash('error', 'Please select at least one grade');
                 Response::redirect('/finance/invoices/generate');
                 return;
             }
 
-            // Get students to invoice
-            $studentWhere = "s.status = 'active' AND sfa.id IS NOT NULL AND s.school_id = ?";
-            $studentParams = [$schoolId];
-
-            if ($gradeId) {
-                $studentWhere .= " AND st.grade_id = ?";
-                $studentParams[] = $gradeId;
-            }
-
-            $stmt = $pdo->prepare("
-                SELECT s.id, s.first_name, s.last_name, sfa.id as fee_account_id
-                FROM students s
-                INNER JOIN student_fee_accounts sfa ON sfa.student_id = s.id
-                LEFT JOIN student_enrollments se ON se.student_id = s.id AND se.is_current = 1
-                LEFT JOIN streams st ON st.id = se.stream_id
-                WHERE {$studentWhere}
-            ");
-            $stmt->execute($studentParams);
-            $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
             $generatedCount = 0;
+            $skippedCount = 0;
 
-            foreach ($students as $student) {
-                $invoiceNumber = 'INV' . date('Y') . strtoupper(substr(md5(uniqid()), 0, 6));
-                $totalAmount = array_sum(array_column($structureItems, 'amount'));
-
+            // Process each selected grade
+            foreach ($gradeIds as $gradeId) {
+                // Find published fee structure for this grade, year, and term
                 $stmt = $pdo->prepare("
-                    INSERT INTO invoices (school_id, student_fee_account_id, invoice_number, invoice_date, due_date, academic_year_id, term_id, total_amount, amount_paid, balance, status, created_by, created_at)
-                    VALUES (?, ?, ?, CURDATE(), ?, ?, ?, ?, 0, ?, 'unpaid', ?, NOW())
+                    SELECT fs.id, fs.name
+                    FROM fee_structures fs
+                    WHERE fs.school_id = ?
+                        AND fs.academic_year_id = ?
+                        AND fs.term_id = ?
+                        AND fs.grade_id = ?
+                        AND fs.status = 'published'
+                    LIMIT 1
                 ");
-                $stmt->execute([
-                    $schoolId, $student['fee_account_id'], $invoiceNumber, $dueDate,
-                    $academicYearId, $termId, $totalAmount, $totalAmount, $userId
-                ]);
-                $invoiceId = $pdo->lastInsertId();
+                $stmt->execute([$schoolId, $academicYearId, $termId, $gradeId]);
+                $feeStructure = $stmt->fetch(PDO::FETCH_ASSOC);
 
-                foreach ($structureItems as $item) {
-                    $stmt = $pdo->prepare("
-                        INSERT INTO invoice_lines (invoice_id, fee_item_id, description, quantity, unit_price, amount, created_at)
-                        VALUES (?, ?, ?, 1, ?, ?, NOW())
-                    ");
-                    $stmt->execute([$invoiceId, $item['fee_item_id'], $item['item_name'], $item['amount'], $item['amount']]);
+                if (!$feeStructure) {
+                    continue; // No fee structure for this grade
                 }
 
-                $stmt = $pdo->prepare("UPDATE student_fee_accounts SET current_balance = current_balance + ? WHERE id = ?");
-                $stmt->execute([$totalAmount, $student['fee_account_id']]);
+                // Get fee structure lines
+                $stmt = $pdo->prepare("
+                    SELECT fsl.*, fi.name as item_name, fi.code as item_code
+                    FROM fee_structure_lines fsl
+                    LEFT JOIN fee_items fi ON fi.id = fsl.fee_item_id
+                    WHERE fsl.fee_structure_id = ?
+                ");
+                $stmt->execute([$feeStructure['id']]);
+                $structureLines = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-                $generatedCount++;
+                if (empty($structureLines)) {
+                    continue; // No items in this structure
+                }
+
+                // Get students enrolled in this grade
+                $studentQuery = "
+                    SELECT s.id, s.first_name, s.last_name, sfa.id as fee_account_id
+                    FROM students s
+                    INNER JOIN student_fee_accounts sfa ON sfa.student_id = s.id
+                    INNER JOIN student_enrollments se ON se.student_id = s.id AND se.is_current = 1
+                    INNER JOIN streams st ON st.id = se.stream_id
+                    WHERE s.status = 'active'
+                        AND st.grade_id = ?
+                ";
+                $params = [$gradeId];
+
+                if ($campusId) {
+                    $studentQuery .= " AND s.campus_id = ?";
+                    $params[] = $campusId;
+                }
+
+                $stmt = $pdo->prepare($studentQuery);
+                $stmt->execute($params);
+                $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                foreach ($students as $student) {
+                    // Check for existing invoice if skip is enabled
+                    if ($skipExisting) {
+                        $stmt = $pdo->prepare("
+                            SELECT id FROM invoices
+                            WHERE student_fee_account_id = ?
+                                AND academic_year_id = ?
+                                AND term_id = ?
+                            LIMIT 1
+                        ");
+                        $stmt->execute([$student['fee_account_id'], $academicYearId, $termId]);
+                        if ($stmt->fetch()) {
+                            $skippedCount++;
+                            continue; // Already has invoice
+                        }
+                    }
+
+                    // Calculate total
+                    $totalAmount = array_sum(array_column($structureLines, 'amount'));
+
+                    // Generate invoice number
+                    $invoiceNumber = 'INV' . date('Y') . strtoupper(substr(md5(uniqid()), 0, 6));
+
+                    // Create invoice
+                    $stmt = $pdo->prepare("
+                        INSERT INTO invoices (school_id, student_fee_account_id, invoice_number, invoice_date, due_date,
+                            academic_year_id, term_id, total_amount, amount_paid, balance, status, created_by, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'unpaid', ?, NOW())
+                    ");
+                    $stmt->execute([
+                        $schoolId, $student['fee_account_id'], $invoiceNumber, $invoiceDate, $dueDate,
+                        $academicYearId, $termId, $totalAmount, $totalAmount, $userId
+                    ]);
+                    $invoiceId = $pdo->lastInsertId();
+
+                    // Create invoice lines
+                    foreach ($structureLines as $line) {
+                        $stmt = $pdo->prepare("
+                            INSERT INTO invoice_lines (invoice_id, fee_item_id, description, quantity, unit_price, amount, created_at)
+                            VALUES (?, ?, ?, 1, ?, ?, NOW())
+                        ");
+                        $stmt->execute([$invoiceId, $line['fee_item_id'], $line['item_name'], $line['amount'], $line['amount']]);
+                    }
+
+                    // Update fee account balance
+                    $stmt = $pdo->prepare("UPDATE student_fee_accounts SET current_balance = current_balance + ? WHERE id = ?");
+                    $stmt->execute([$totalAmount, $student['fee_account_id']]);
+
+                    $generatedCount++;
+                }
             }
 
-            flash('success', "Generated {$generatedCount} invoices successfully");
+            $message = "Generated {$generatedCount} invoices successfully";
+            if ($skippedCount > 0) {
+                $message .= " ({$skippedCount} skipped due to existing invoices)";
+            }
+            flash('success', $message);
         } catch (Exception $e) {
             error_log('Process Generate Invoices error: ' . $e->getMessage());
             flash('error', 'Failed to generate invoices: ' . $e->getMessage());
@@ -1845,13 +1967,18 @@ class FinanceController
 
             $status = Request::get('status', '');
             $paymentMethod = Request::get('payment_method', '');
-            $fromDate = Request::get('from_date', date('Y-m-01'));
-            $toDate = Request::get('to_date', date('Y-m-d'));
+            $fromDate = Request::get('from_date', '');
+            $toDate = Request::get('to_date', '');
             $search = Request::get('search', '');
+            $accountId = Request::get('account', '');
 
             $where = ['p.school_id = ?'];
             $params = [$schoolId];
 
+            if (!empty($accountId)) {
+                $where[] = 'p.student_fee_account_id = ?';
+                $params[] = $accountId;
+            }
             if (!empty($status)) {
                 $where[] = 'p.status = ?';
                 $params[] = $status;
@@ -1913,7 +2040,8 @@ class FinanceController
                     'payment_method' => $paymentMethod,
                     'from_date' => $fromDate,
                     'to_date' => $toDate,
-                    'search' => $search
+                    'search' => $search,
+                    'account' => $accountId
                 ],
                 'totals' => $totals
             ]);
@@ -1980,7 +2108,7 @@ class FinanceController
             $pdo = Database::getTenantConnection();
             $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
-            $feeAccountId = Request::get('fee_account_id');
+            $feeAccountId = Request::get('fee_account_id') ?: Request::get('account');
             $invoiceId = Request::get('invoice_id');
 
             $feeAccount = null;
@@ -2008,7 +2136,13 @@ class FinanceController
             $stmt = $pdo->query("SELECT id, code, name FROM payment_methods WHERE is_active = 1 ORDER BY sort_order, name");
             $paymentMethods = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $stmt = $pdo->prepare("SELECT id, account_name, account_number, bank_name FROM bank_accounts WHERE school_id = ? AND is_active = 1 ORDER BY account_name");
+            $stmt = $pdo->prepare("
+                SELECT ba.id, ba.account_name, ba.account_number, b.bank_name
+                FROM bank_accounts ba
+                LEFT JOIN banks b ON b.id = ba.bank_id
+                WHERE ba.school_id = ? AND ba.is_active = 1
+                ORDER BY ba.account_name
+            ");
             $stmt->execute([$schoolId]);
             $bankAccounts = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -2154,20 +2288,37 @@ class FinanceController
             $stmt = $pdo->query("SELECT id, grade_name FROM grades WHERE is_active = 1 ORDER BY sort_order");
             $grades = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+            // Get summary stats
             $stmt = $pdo->prepare("
-                SELECT COUNT(*) as total_accounts, SUM(CASE WHEN current_balance > 0 THEN 1 ELSE 0 END) as with_balance,
-                    COALESCE(SUM(current_balance), 0) as total_outstanding
+                SELECT
+                    COUNT(*) as total_accounts,
+                    SUM(CASE WHEN account_status = 'active' THEN 1 ELSE 0 END) as active_accounts,
+                    COALESCE(SUM(CASE WHEN current_balance > 0 THEN current_balance ELSE 0 END), 0) as total_outstanding
                 FROM student_fee_accounts WHERE school_id = ?
             ");
             $stmt->execute([$schoolId]);
-            $summary = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stats = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            // Calculate total_invoiced and total_paid for each account
+            foreach ($accounts as &$account) {
+                // Get total invoiced
+                $stmtInv = $pdo->prepare("SELECT COALESCE(SUM(total_amount), 0) as total FROM invoices WHERE student_fee_account_id = ?");
+                $stmtInv->execute([$account['id']]);
+                $account['total_invoiced'] = $stmtInv->fetchColumn();
+
+                // Get total paid
+                $stmtPay = $pdo->prepare("SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE student_fee_account_id = ? AND status = 'confirmed'");
+                $stmtPay->execute([$account['id']]);
+                $account['total_paid'] = $stmtPay->fetchColumn();
+            }
+            unset($account); // Break reference
 
             Response::view('finance/student_accounts', [
                 'pageTitle' => 'Student Accounts',
                 'accounts' => $accounts,
                 'grades' => $grades,
                 'filters' => ['status' => $status, 'balance_type' => $balanceType, 'search' => $search],
-                'summary' => $summary
+                'stats' => $stats
             ]);
         } catch (Exception $e) {
             error_log('Student Accounts error: ' . $e->getMessage());
@@ -2186,11 +2337,15 @@ class FinanceController
             $pdo = Database::getTenantConnection();
             $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
+            // Get account with both student and applicant name fields for view compatibility
             $stmt = $pdo->prepare("
                 SELECT sfa.*,
-                    COALESCE(s.first_name, a.first_name) as first_name,
-                    COALESCE(s.last_name, a.last_name) as last_name,
+                    s.first_name as student_first_name,
+                    s.last_name as student_last_name,
+                    a.first_name as applicant_first_name,
+                    a.last_name as applicant_last_name,
                     COALESCE(s.admission_number, a.admission_number) as admission_number,
+                    a.application_ref,
                     g.grade_name,
                     st.stream_name
                 FROM student_fee_accounts sfa
@@ -2198,7 +2353,7 @@ class FinanceController
                 LEFT JOIN applicants a ON a.id = sfa.applicant_id
                 LEFT JOIN student_enrollments se ON se.student_id = s.id AND se.is_current = 1
                 LEFT JOIN streams st ON st.id = se.stream_id
-                LEFT JOIN grades g ON g.id = st.grade_id
+                LEFT JOIN grades g ON g.id = COALESCE(st.grade_id, a.grade_applying_for_id)
                 WHERE sfa.id = ? AND sfa.school_id = ?
             ");
             $stmt->execute([$id, $schoolId]);
@@ -2210,6 +2365,7 @@ class FinanceController
                 return;
             }
 
+            // Get invoices
             $stmt = $pdo->prepare("
                 SELECT i.*, ay.year_name as academic_year
                 FROM invoices i
@@ -2220,32 +2376,105 @@ class FinanceController
             $stmt->execute([$id]);
             $invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+            // Get payments
             $stmt = $pdo->prepare("
-                SELECT p.*, i.invoice_number
+                SELECT p.*, pm.name as payment_method_name
                 FROM payments p
-                LEFT JOIN invoices i ON i.id = p.invoice_id
-                WHERE p.student_fee_account_id = ?
+                LEFT JOIN payment_methods pm ON pm.code = p.payment_method
+                WHERE p.student_fee_account_id = ? AND p.status = 'confirmed'
                 ORDER BY p.payment_date DESC
             ");
             $stmt->execute([$id]);
             $payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+            // Get credit notes
             $stmt = $pdo->prepare("
                 SELECT cn.*, i.invoice_number
                 FROM credit_notes cn
                 LEFT JOIN invoices i ON i.id = cn.invoice_id
-                WHERE cn.student_fee_account_id = ?
-                ORDER BY cn.created_at DESC
+                WHERE cn.fee_account_id = ? AND cn.status = 'applied'
+                ORDER BY cn.issue_date DESC
             ");
             $stmt->execute([$id]);
             $creditNotes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            Response::view('finance/student_account_view', [
+            // Build statement - combine invoices and payments in chronological order
+            $statement = [];
+
+            // Add invoices as debits
+            foreach ($invoices as $inv) {
+                $statement[] = [
+                    'date' => $inv['invoice_date'],
+                    'type' => 'invoice',
+                    'reference' => $inv['invoice_number'],
+                    'description' => 'Invoice - ' . ($inv['academic_year'] ?? 'N/A'),
+                    'debit' => floatval($inv['total_amount']),
+                    'credit' => 0,
+                    'status' => $inv['status'],
+                    'id' => $inv['id']
+                ];
+            }
+
+            // Add payments as credits
+            foreach ($payments as $pay) {
+                $statement[] = [
+                    'date' => $pay['payment_date'],
+                    'type' => 'payment',
+                    'reference' => $pay['receipt_number'],
+                    'description' => 'Payment - ' . ($pay['payment_method_name'] ?? ucfirst($pay['payment_method'])),
+                    'debit' => 0,
+                    'credit' => floatval($pay['amount']),
+                    'status' => $pay['status'],
+                    'id' => $pay['id']
+                ];
+            }
+
+            // Add credit notes as credits
+            foreach ($creditNotes as $cn) {
+                $statement[] = [
+                    'date' => $cn['issue_date'],
+                    'type' => 'credit_note',
+                    'reference' => $cn['credit_note_number'],
+                    'description' => 'Credit Note - ' . ucfirst($cn['credit_type']),
+                    'debit' => 0,
+                    'credit' => floatval($cn['amount']),
+                    'status' => $cn['status'],
+                    'id' => $cn['id']
+                ];
+            }
+
+            // Sort by date (oldest first for running balance)
+            usort($statement, function($a, $b) {
+                return strtotime($a['date']) - strtotime($b['date']);
+            });
+
+            // Calculate running balance
+            $runningBalance = 0;
+            foreach ($statement as &$entry) {
+                $runningBalance += $entry['debit'] - $entry['credit'];
+                $entry['balance'] = $runningBalance;
+            }
+            unset($entry);
+
+            // Reverse to show newest first
+            $statement = array_reverse($statement);
+
+            // Calculate totals
+            $totalInvoiced = array_sum(array_column($invoices, 'total_amount'));
+            $totalPaid = array_sum(array_column($payments, 'amount'));
+            $totalCredits = array_sum(array_column($creditNotes, 'amount'));
+            $balance = $totalInvoiced - $totalPaid - $totalCredits;
+
+            Response::view('finance/student_account_statement', [
                 'pageTitle' => 'Account: ' . $account['account_number'],
                 'account' => $account,
                 'invoices' => $invoices,
                 'payments' => $payments,
-                'creditNotes' => $creditNotes
+                'creditNotes' => $creditNotes,
+                'statement' => $statement,
+                'totalInvoiced' => $totalInvoiced,
+                'totalPaid' => $totalPaid + $totalCredits,
+                'balance' => $balance
             ]);
         } catch (Exception $e) {
             error_log('View Student Account error: ' . $e->getMessage());
@@ -2267,26 +2496,122 @@ class FinanceController
             $pdo = Database::getTenantConnection();
             $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
-            $stmt = $pdo->prepare("
-                SELECT fa.*,
-                    (SELECT COUNT(*) FROM family_account_members fam WHERE fam.family_account_id = fa.id) as member_count,
-                    (SELECT SUM(sfa.current_balance) FROM student_fee_accounts sfa
-                     INNER JOIN family_account_members fam ON fam.student_fee_account_id = sfa.id
-                     WHERE fam.family_account_id = fa.id) as total_balance
-                FROM family_accounts fa
-                WHERE fa.school_id = ?
-                ORDER BY fa.family_name
-            ");
-            $stmt->execute([$schoolId]);
-            $accounts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            // Get filter parameters
+            $search = Request::get('search', '');
+            $status = Request::get('status', '');
+
+            // Initialize defaults
+            $accounts = [];
+            $stats = ['total_families' => 0, 'active_families' => 0, 'linked_students' => 0];
+            $potentialFamilies = [];
+
+            // Check if family_accounts table exists and get accounts
+            try {
+                // Build WHERE clause for accounts - check which columns exist
+                $where = ['1=1'];
+                $params = [];
+
+                // Try to check for school_id column
+                $stmt = $pdo->query("SHOW COLUMNS FROM family_accounts LIKE 'school_id'");
+                $hasSchoolId = $stmt->fetch() !== false;
+
+                if ($hasSchoolId) {
+                    $where[] = 'fa.school_id = ?';
+                    $params[] = $schoolId;
+                }
+
+                if (!empty($search)) {
+                    $where[] = "(fa.account_number LIKE ? OR fa.family_name LIKE ?)";
+                    $searchTerm = '%' . $search . '%';
+                    $params[] = $searchTerm;
+                    $params[] = $searchTerm;
+                }
+
+                if (!empty($status)) {
+                    $where[] = 'fa.account_status = ?';
+                    $params[] = $status;
+                }
+
+                $whereClause = implode(' AND ', $where);
+
+                // Get family accounts - simplified query without guardian join initially
+                $stmt = $pdo->prepare("
+                    SELECT fa.*,
+                        (SELECT COUNT(*) FROM family_account_members fam WHERE fam.family_account_id = fa.id) as member_count,
+                        (SELECT COALESCE(SUM(sfa.current_balance), 0) FROM student_fee_accounts sfa
+                         INNER JOIN family_account_members fam ON fam.student_fee_account_id = sfa.id
+                         WHERE fam.family_account_id = fa.id) as total_balance
+                    FROM family_accounts fa
+                    WHERE {$whereClause}
+                    ORDER BY fa.family_name
+                ");
+                $stmt->execute($params);
+                $accounts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                // Get stats
+                $statsWhere = $hasSchoolId ? 'WHERE school_id = ?' : '';
+                $statsParams = $hasSchoolId ? [$schoolId] : [];
+
+                $stmt = $pdo->prepare("
+                    SELECT
+                        COUNT(*) as total_families,
+                        SUM(CASE WHEN account_status = 'active' THEN 1 ELSE 0 END) as active_families
+                    FROM family_accounts
+                    {$statsWhere}
+                ");
+                $stmt->execute($statsParams);
+                $stats = $stmt->fetch(PDO::FETCH_ASSOC) ?: $stats;
+
+                // Count linked students
+                $stmt = $pdo->query("SELECT COUNT(DISTINCT student_fee_account_id) as linked_students FROM family_account_members");
+                $linkedStats = $stmt->fetch(PDO::FETCH_ASSOC);
+                $stats['linked_students'] = $linkedStats['linked_students'] ?? 0;
+
+            } catch (PDOException $e) {
+                // Table might not exist - that's OK, show empty state
+                error_log('Family accounts table query failed: ' . $e->getMessage());
+            }
+
+            // Find potential families (guardians with multiple children not in family accounts)
+            try {
+                $stmt = $pdo->prepare("
+                    SELECT g.id as guardian_id,
+                           CONCAT(g.first_name, ' ', g.last_name) as guardian_name,
+                           COUNT(DISTINCT sg.student_id) as child_count,
+                           GROUP_CONCAT(DISTINCT CONCAT(s.first_name, ' ', s.last_name) SEPARATOR ', ') as children
+                    FROM guardians g
+                    INNER JOIN student_guardians sg ON sg.guardian_id = g.id
+                    INNER JOIN students s ON s.id = sg.student_id
+                    INNER JOIN student_fee_accounts sfa ON sfa.student_id = s.id
+                    LEFT JOIN family_account_members fam ON fam.student_fee_account_id = sfa.id
+                    WHERE g.school_id = ? AND fam.id IS NULL
+                    GROUP BY g.id, g.first_name, g.last_name
+                    HAVING child_count >= 2
+                    ORDER BY child_count DESC
+                    LIMIT 10
+                ");
+                $stmt->execute([$schoolId]);
+                $potentialFamilies = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Exception $e) {
+                // Potential families query is optional - may fail if tables don't exist
+                error_log('Potential families query failed: ' . $e->getMessage());
+            }
 
             Response::view('finance/family_accounts', [
                 'pageTitle' => 'Family Accounts',
-                'accounts' => $accounts
+                'accounts' => $accounts,
+                'stats' => $stats,
+                'potentialFamilies' => $potentialFamilies,
+                'search' => $search,
+                'status' => $status
             ]);
         } catch (Exception $e) {
-            error_log('Family Accounts error: ' . $e->getMessage());
-            flash('error', 'Failed to load family accounts');
+            error_log('Family Accounts error: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString());
+            if (Response::isAjax()) {
+                echo '<div class="alert alert-danger m-3"><strong>Error:</strong> ' . htmlspecialchars($e->getMessage()) . '</div>';
+                return;
+            }
+            flash('error', 'Failed to load family accounts: ' . $e->getMessage());
             Response::redirect('/finance');
         }
     }
@@ -2378,6 +2703,8 @@ class FinanceController
 
     public function collectionReport()
     {
+        error_log('collectionReport() method called - URI: ' . $_SERVER['REQUEST_URI']);
+
         if (!isAuthenticated()) {
             Response::redirect('/login');
         }
@@ -2389,9 +2716,19 @@ class FinanceController
             $fromDate = Request::get('from_date', date('Y-m-01'));
             $toDate = Request::get('to_date', date('Y-m-d'));
             $paymentMethod = Request::get('payment_method', '');
+            $status = Request::get('status', '');
 
-            $where = ['p.school_id = ?', "p.status IN ('completed', 'confirmed')"];
+            // Build WHERE clause
+            $where = ['p.school_id = ?'];
             $params = [$schoolId];
+
+            // Status filter - default to confirmed if not specified
+            if (!empty($status)) {
+                $where[] = 'p.status = ?';
+                $params[] = $status;
+            } else {
+                $where[] = "p.status IN ('completed', 'confirmed')";
+            }
 
             if (!empty($fromDate)) {
                 $where[] = 'DATE(p.payment_date) >= ?';
@@ -2408,49 +2745,101 @@ class FinanceController
 
             $whereClause = implode(' AND ', $where);
 
+            // Daily breakdown - matches view expectation: payment_date, transaction_count, daily_total
             $stmt = $pdo->prepare("
-                SELECT DATE(p.payment_date) as date, COUNT(*) as count, SUM(p.amount) as total
+                SELECT DATE(p.payment_date) as payment_date,
+                       COUNT(*) as transaction_count,
+                       SUM(p.amount) as daily_total
                 FROM payments p
                 WHERE {$whereClause}
                 GROUP BY DATE(p.payment_date)
-                ORDER BY DATE(p.payment_date)
+                ORDER BY DATE(p.payment_date) DESC
             ");
             $stmt->execute($params);
-            $dailySummary = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $dailyBreakdown = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+            // By payment method - matches view: payment_method, method_name, transaction_count, method_total
             $stmt = $pdo->prepare("
-                SELECT p.payment_method, COUNT(*) as count, SUM(p.amount) as total
+                SELECT p.payment_method,
+                       COALESCE(pm.name, UPPER(p.payment_method)) as method_name,
+                       COUNT(*) as transaction_count,
+                       SUM(p.amount) as method_total
                 FROM payments p
+                LEFT JOIN payment_methods pm ON pm.code = p.payment_method
                 WHERE {$whereClause}
-                GROUP BY p.payment_method
-                ORDER BY total DESC
+                GROUP BY p.payment_method, pm.name
+                ORDER BY method_total DESC
             ");
             $stmt->execute($params);
             $byMethod = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $stmt = $pdo->prepare("SELECT COUNT(*) as count, COALESCE(SUM(amount), 0) as total FROM payments p WHERE {$whereClause}");
+            // Summary totals
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*) as total_transactions,
+                       COALESCE(SUM(amount), 0) as total_collected,
+                       COUNT(DISTINCT DATE(payment_date)) as collection_days
+                FROM payments p
+                WHERE {$whereClause}
+            ");
             $stmt->execute($params);
-            $total = $stmt->fetch(PDO::FETCH_ASSOC);
+            $totals = $stmt->fetch(PDO::FETCH_ASSOC);
 
+            $summary = [
+                'total_transactions' => (int)$totals['total_transactions'],
+                'total_collected' => (float)$totals['total_collected'],
+                'collection_days' => (int)$totals['collection_days'],
+                'average_payment' => $totals['total_transactions'] > 0
+                    ? $totals['total_collected'] / $totals['total_transactions']
+                    : 0
+            ];
+
+            // Transaction details - matches view expectations
+            $stmt = $pdo->prepare("
+                SELECT p.id, p.receipt_number, p.payment_date, p.amount,
+                       p.payment_method, COALESCE(pm.name, UPPER(p.payment_method)) as method_name,
+                       p.reference_number, p.status,
+                       CONCAT(COALESCE(s.first_name, a.first_name, ''), ' ', COALESCE(s.last_name, a.last_name, '')) as payer_name,
+                       COALESCE(s.admission_number, a.admission_number) as payer_ref,
+                       u.full_name as received_by_name
+                FROM payments p
+                LEFT JOIN payment_methods pm ON pm.code = p.payment_method
+                LEFT JOIN student_fee_accounts sfa ON sfa.id = p.student_fee_account_id
+                LEFT JOIN students s ON s.id = sfa.student_id
+                LEFT JOIN applicants a ON a.id = sfa.applicant_id
+                LEFT JOIN users u ON u.id = p.received_by
+                WHERE {$whereClause}
+                ORDER BY p.payment_date DESC, p.id DESC
+                LIMIT 500
+            ");
+            $stmt->execute($params);
+            $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Payment methods for filter dropdown
             $stmt = $pdo->query("SELECT id, code, name FROM payment_methods WHERE is_active = 1 ORDER BY sort_order, name");
             $paymentMethods = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            // Grades don't have school_id - get all active grades
-            $stmt = $pdo->query("SELECT id, grade_name FROM grades WHERE is_active = 1 ORDER BY sort_order");
-            $grades = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
             Response::view('finance/reports/collection', [
                 'pageTitle' => 'Collection Report',
-                'dailySummary' => $dailySummary,
+                'summary' => $summary,
+                'dailyBreakdown' => $dailyBreakdown,
                 'byMethod' => $byMethod,
-                'total' => $total,
-                'filters' => ['from_date' => $fromDate, 'to_date' => $toDate, 'payment_method' => $paymentMethod],
-                'paymentMethods' => $paymentMethods,
-                'grades' => $grades
+                'transactions' => $transactions,
+                'filters' => [
+                    'from_date' => $fromDate,
+                    'to_date' => $toDate,
+                    'payment_method' => $paymentMethod,
+                    'status' => $status
+                ],
+                'paymentMethods' => $paymentMethods
             ]);
         } catch (Exception $e) {
-            error_log('Collection Report error: ' . $e->getMessage());
-            flash('error', 'Failed to generate collection report');
+            error_log('Collection Report error: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString());
+            // For AJAX requests, show inline error instead of redirecting
+            if (Response::isAjax()) {
+                echo '<div class="alert alert-danger m-3"><strong>Error:</strong> ' . htmlspecialchars($e->getMessage()) . '</div>';
+                return;
+            }
+            flash('error', 'Failed to generate collection report: ' . $e->getMessage());
             Response::redirect('/finance');
         }
     }
@@ -2466,6 +2855,7 @@ class FinanceController
             $schoolId = $_SESSION['school_id'] ?? $_SESSION['tenant_id'] ?? 1;
 
             $minBalance = Request::get('min_balance', '');
+            $gradeFilter = Request::get('grade', '');
 
             $where = ['sfa.school_id = ?', 'sfa.current_balance > 0'];
             $params = [$schoolId];
@@ -2475,24 +2865,39 @@ class FinanceController
                 $params[] = floatval($minBalance);
             }
 
+            if (!empty($gradeFilter)) {
+                $where[] = 'g.id = ?';
+                $params[] = $gradeFilter;
+            }
+
             $whereClause = implode(' AND ', $where);
 
+            // By grade summary (always show all grades for the chart)
+            $gradeWhere = ['sfa.school_id = ?', 'sfa.current_balance > 0'];
+            $gradeParams = [$schoolId];
+            if (!empty($minBalance)) {
+                $gradeWhere[] = 'sfa.current_balance >= ?';
+                $gradeParams[] = floatval($minBalance);
+            }
+            $gradeWhereClause = implode(' AND ', $gradeWhere);
+
             $stmt = $pdo->prepare("
-                SELECT g.grade_name, COUNT(DISTINCT sfa.id) as account_count, SUM(sfa.current_balance) as total_outstanding
+                SELECT g.id as grade_id, g.grade_name, COUNT(DISTINCT sfa.id) as account_count, SUM(sfa.current_balance) as total_outstanding
                 FROM student_fee_accounts sfa
                 LEFT JOIN students s ON s.id = sfa.student_id
                 LEFT JOIN student_enrollments se ON se.student_id = s.id AND se.is_current = 1
                 LEFT JOIN streams st ON st.id = se.stream_id
                 LEFT JOIN grades g ON g.id = st.grade_id
-                WHERE {$whereClause}
-                GROUP BY g.id
+                WHERE {$gradeWhereClause}
+                GROUP BY g.id, g.grade_name
                 ORDER BY total_outstanding DESC
             ");
-            $stmt->execute($params);
+            $stmt->execute($gradeParams);
             $byGrade = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+            // Top balances (filtered)
             $stmt = $pdo->prepare("
-                SELECT sfa.account_number, sfa.current_balance,
+                SELECT sfa.id, sfa.account_number, sfa.current_balance,
                     COALESCE(s.first_name, a.first_name) as first_name,
                     COALESCE(s.last_name, a.last_name) as last_name,
                     COALESCE(s.admission_number, a.admission_number) as admission_number,
@@ -2510,7 +2915,16 @@ class FinanceController
             $stmt->execute($params);
             $topBalances = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $stmt = $pdo->prepare("SELECT COUNT(*) as count, COALESCE(SUM(current_balance), 0) as total FROM student_fee_accounts sfa WHERE {$whereClause}");
+            // Totals (filtered)
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*) as count, COALESCE(SUM(sfa.current_balance), 0) as total
+                FROM student_fee_accounts sfa
+                LEFT JOIN students s ON s.id = sfa.student_id
+                LEFT JOIN student_enrollments se ON se.student_id = s.id AND se.is_current = 1
+                LEFT JOIN streams st ON st.id = se.stream_id
+                LEFT JOIN grades g ON g.id = st.grade_id
+                WHERE {$whereClause}
+            ");
             $stmt->execute($params);
             $total = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -2522,12 +2936,16 @@ class FinanceController
                 'byGrade' => $byGrade,
                 'topBalances' => $topBalances,
                 'total' => $total,
-                'filters' => ['min_balance' => $minBalance],
+                'filters' => ['min_balance' => $minBalance, 'grade' => $gradeFilter],
                 'grades' => $grades
             ]);
         } catch (Exception $e) {
-            error_log('Outstanding Report error: ' . $e->getMessage());
-            flash('error', 'Failed to generate outstanding report');
+            error_log('Outstanding Report error: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString());
+            if (Response::isAjax()) {
+                echo '<div class="alert alert-danger m-3"><strong>Error:</strong> ' . htmlspecialchars($e->getMessage()) . '</div>';
+                return;
+            }
+            flash('error', 'Failed to generate outstanding report: ' . $e->getMessage());
             Response::redirect('/finance');
         }
     }

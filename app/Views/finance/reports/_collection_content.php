@@ -4,6 +4,12 @@
  * Shows fee collections by date, payment method, and category
  */
 
+// Extract filter values from filters array passed by controller
+$fromDate = $filters['from_date'] ?? date('Y-m-01');
+$toDate = $filters['to_date'] ?? date('Y-m-d');
+$selectedMethod = $filters['payment_method'] ?? '';
+$selectedStatus = $filters['status'] ?? '';
+
 $summary = $summary ?? ['total_transactions' => 0, 'total_collected' => 0, 'average_payment' => 0, 'collection_days' => 0];
 $dailyBreakdown = $dailyBreakdown ?? [];
 $byMethod = $byMethod ?? [];

@@ -2,6 +2,11 @@
 /**
  * Student Accounts - Content
  */
+
+// Extract filters from array
+$search = $filters['search'] ?? '';
+$status = $filters['status'] ?? '';
+$balanceFilter = $filters['balance_type'] ?? '';
 ?>
 
 <div class="page-header d-print-none">
@@ -81,11 +86,11 @@
                     </div>
                     <div class="col-md-2">
                         <label class="form-label">Balance</label>
-                        <select name="balance" class="form-select">
+                        <select name="balance_type" class="form-select">
                             <option value="">All Balances</option>
-                            <option value="owing" <?= ($balanceFilter ?? '') === 'owing' ? 'selected' : '' ?>>Owing (Balance > 0)</option>
-                            <option value="credit" <?= ($balanceFilter ?? '') === 'credit' ? 'selected' : '' ?>>Credit (Balance < 0)</option>
-                            <option value="zero" <?= ($balanceFilter ?? '') === 'zero' ? 'selected' : '' ?>>Cleared (Balance = 0)</option>
+                            <option value="outstanding" <?= $balanceFilter === 'outstanding' ? 'selected' : '' ?>>Owing (Balance > 0)</option>
+                            <option value="credit" <?= $balanceFilter === 'credit' ? 'selected' : '' ?>>Credit (Balance < 0)</option>
+                            <option value="zero" <?= $balanceFilter === 'zero' ? 'selected' : '' ?>>Cleared (Balance = 0)</option>
                         </select>
                     </div>
                     <div class="col-md-2 d-flex align-items-end">
@@ -93,7 +98,7 @@
                             <i class="ti ti-search me-1"></i>Filter
                         </button>
                     </div>
-                    <?php if (!empty($search) || !empty($status) || !empty($balanceFilter)): ?>
+                    <?php if ($search || $status || $balanceFilter): ?>
                     <div class="col-md-2 d-flex align-items-end">
                         <a href="/finance/student-accounts" class="btn btn-secondary w-100">
                             <i class="ti ti-x me-1"></i>Clear
@@ -120,7 +125,7 @@
                     </div>
                     <p class="empty-title">No accounts found</p>
                     <p class="empty-subtitle text-muted">
-                        <?php if (!empty($search) || !empty($status) || !empty($balanceFilter)): ?>
+                        <?php if ($search || $status || $balanceFilter): ?>
                         Try adjusting your search filters.
                         <?php else: ?>
                         Student accounts are created when students are admitted.
@@ -145,11 +150,9 @@
                         <tbody>
                             <?php foreach ($accounts as $account): ?>
                             <?php
-                            // Determine name and reference
-                            $name = $account['student_first_name']
-                                ? $account['student_first_name'] . ' ' . $account['student_last_name']
-                                : $account['applicant_first_name'] . ' ' . $account['applicant_last_name'];
-                            $ref = $account['admission_number'] ?? $account['application_ref'] ?? '';
+                            // Determine name and reference - uses first_name and last_name from COALESCE
+                            $name = trim(($account['first_name'] ?? '') . ' ' . ($account['last_name'] ?? ''));
+                            $ref = $account['admission_number'] ?? '';
                             $isStudent = !empty($account['student_id']);
 
                             // Calculate balance

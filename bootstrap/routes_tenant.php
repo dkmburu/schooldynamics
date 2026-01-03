@@ -184,7 +184,7 @@ Router::post('/finance/transport-zones/update', 'FinanceController@updateZone');
 // Invoicing
 Router::get('/finance/invoices', 'FinanceController@invoices');
 Router::get('/finance/invoices/generate', 'FinanceController@generateInvoices');
-Router::post('/finance/invoices/generate', 'FinanceController@processInvoiceGeneration');
+Router::post('/finance/invoices/generate', 'FinanceController@processGenerateInvoices');
 Router::get('/finance/invoices/:id', 'FinanceController@viewInvoice');
 
 // Credit Notes
