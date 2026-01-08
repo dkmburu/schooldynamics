@@ -562,11 +562,9 @@ Router::post('/communication/broadcasts/:id/edit', 'BroadcastsController@update'
 Router::post('/communication/broadcasts/:id/delete', 'BroadcastsController@delete');
 Router::post('/communication/broadcasts/:id/cancel', 'BroadcastsController@cancel');
 
-// Communication Credits (placeholder for future implementation)
-Router::get('/communication/credits', function() {
-    flash('info', 'Communication Credits module coming soon');
-    Response::redirect('/communication/broadcasts');
-});
+// Communication Credits
+Router::get('/communication/credits', 'CreditsController@index');
+Router::post('/communication/credits/purchase', 'CreditsController@purchase');
 
 // Broadcast Approvals (placeholder for future implementation)
 Router::get('/communication/approvals', function() {
