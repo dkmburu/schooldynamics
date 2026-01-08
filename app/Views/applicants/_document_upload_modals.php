@@ -150,14 +150,26 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <script>
-let uploadToken = null;
-let uploadCheckInterval = null;
+// Use window-level variables to prevent re-initialization issues with AJAX
+window.uploadToken = window.uploadToken || null;
+window.uploadCheckInterval = window.uploadCheckInterval || null;
 
-function showUploadModal(docType, docLabel, applicantId) {
+// Define all functions on window object to ensure they persist after AJAX loads
+window.showUploadModal = function(docType, docLabel, applicantId) {
     // Reset modal
-    document.getElementById('upload_doc_type').value = docType;
-    document.getElementById('upload_doc_type_label').textContent = docLabel;
-    document.getElementById('upload_applicant_id').value = applicantId;
+    const uploadDocType = document.getElementById('upload_doc_type');
+    const uploadDocTypeLabel = document.getElementById('upload_doc_type_label');
+    const uploadApplicantId = document.getElementById('upload_applicant_id');
+
+    if (!uploadDocType || !uploadDocTypeLabel || !uploadApplicantId) {
+        console.error('Upload modal elements not found. Please refresh the page.');
+        alert('Upload modal not ready. Please refresh the page and try again.');
+        return;
+    }
+
+    uploadDocType.value = docType;
+    uploadDocTypeLabel.textContent = docLabel;
+    uploadApplicantId.value = applicantId;
 
     // Show method selection
     document.getElementById('step_choose_method').style.display = 'block';
@@ -165,9 +177,9 @@ function showUploadModal(docType, docLabel, applicantId) {
     document.getElementById('step_phone_qr').style.display = 'none';
 
     // Clear any existing intervals
-    if (uploadCheckInterval) {
-        clearInterval(uploadCheckInterval);
-        uploadCheckInterval = null;
+    if (window.uploadCheckInterval) {
+        clearInterval(window.uploadCheckInterval);
+        window.uploadCheckInterval = null;
     }
 
     // Show modal using Bootstrap's JavaScript API or jQuery
@@ -175,14 +187,20 @@ function showUploadModal(docType, docLabel, applicantId) {
     if (typeof jQuery !== 'undefined' && jQuery.fn.modal) {
         jQuery('#uploadModal').modal('show');
     } else if (typeof bootstrap !== 'undefined') {
-        new bootstrap.Modal(uploadModal).show();
+        const modal = bootstrap.Modal.getInstance(uploadModal) || new bootstrap.Modal(uploadModal);
+        modal.show();
     } else {
         uploadModal.classList.add('show');
         uploadModal.style.display = 'block';
     }
 }
 
-function selectUploadMethod(method) {
+// Alias for backwards compatibility
+function showUploadModal(docType, docLabel, applicantId) {
+    window.showUploadModal(docType, docLabel, applicantId);
+}
+
+window.selectUploadMethod = function(method) {
     const docType = document.getElementById('upload_doc_type').value;
     const applicantId = document.getElementById('upload_applicant_id').value;
 
@@ -199,23 +217,25 @@ function selectUploadMethod(method) {
         document.getElementById('step_choose_method').style.display = 'none';
         document.getElementById('step_phone_qr').style.display = 'block';
 
-        generateQRCode(applicantId, docType);
+        window.generateQRCode(applicantId, docType);
     }
 }
+function selectUploadMethod(method) { window.selectUploadMethod(method); }
 
-function backToMethodSelection() {
+window.backToMethodSelection = function() {
     document.getElementById('step_choose_method').style.display = 'block';
     document.getElementById('step_computer_upload').style.display = 'none';
     document.getElementById('step_phone_qr').style.display = 'none';
 
     // Clear interval if exists
-    if (uploadCheckInterval) {
-        clearInterval(uploadCheckInterval);
-        uploadCheckInterval = null;
+    if (window.uploadCheckInterval) {
+        clearInterval(window.uploadCheckInterval);
+        window.uploadCheckInterval = null;
     }
 }
+function backToMethodSelection() { window.backToMethodSelection(); }
 
-async function generateQRCode(applicantId, docType) {
+window.generateQRCode = async function(applicantId, docType) {
     try {
         // Show spinner
         document.getElementById('qr_code_spinner').style.display = 'block';
@@ -237,8 +257,8 @@ async function generateQRCode(applicantId, docType) {
         const data = await response.json();
 
         if (data.success) {
-            uploadToken = data.token;
-            const uploadUrl = window.location.origin + '/upload-document/' + uploadToken;
+            window.uploadToken = data.token;
+            const uploadUrl = window.location.origin + '/upload-document/' + window.uploadToken;
 
             // Clear previous QR code if any
             const qrContainer = document.getElementById('qr_code');
@@ -260,7 +280,7 @@ async function generateQRCode(applicantId, docType) {
                 document.getElementById('qr_code_display').style.display = 'block';
 
                 // Start checking for upload completion
-                startUploadCheck(uploadToken, applicantId);
+                window.startUploadCheck(window.uploadToken, applicantId);
             } catch (error) {
                 console.error('QR generation error:', error);
                 alert('Failed to generate QR code');
@@ -275,11 +295,11 @@ async function generateQRCode(applicantId, docType) {
     }
 }
 
-function startUploadCheck(token, applicantId) {
+window.startUploadCheck = function(token, applicantId) {
     document.getElementById('upload_status').style.display = 'block';
     document.getElementById('upload_status_text').textContent = 'Waiting for upload from phone...';
 
-    uploadCheckInterval = setInterval(async () => {
+    window.uploadCheckInterval = setInterval(async () => {
         try {
             const response = await fetch('/applicants/documents/check-upload-status/' + token, {
                 headers: {
@@ -290,7 +310,8 @@ function startUploadCheck(token, applicantId) {
             const data = await response.json();
 
             if (data.status === 'completed') {
-                clearInterval(uploadCheckInterval);
+                clearInterval(window.uploadCheckInterval);
+                window.uploadCheckInterval = null;
                 document.getElementById('upload_status_text').innerHTML = '<i class="fas fa-check-circle mr-2"></i>Document uploaded successfully!';
                 document.getElementById('upload_status').classList.remove('alert-info');
                 document.getElementById('upload_status').classList.add('alert-success');
@@ -301,7 +322,8 @@ function startUploadCheck(token, applicantId) {
                     if (typeof jQuery !== 'undefined' && jQuery.fn.modal) {
                         jQuery('#uploadModal').modal('hide');
                     } else if (typeof bootstrap !== 'undefined') {
-                        bootstrap.Modal.getInstance(uploadModal).hide();
+                        const modalInstance = bootstrap.Modal.getInstance(uploadModal);
+                        if (modalInstance) modalInstance.hide();
                     } else {
                         uploadModal.classList.remove('show');
                         uploadModal.style.display = 'none';
@@ -310,7 +332,8 @@ function startUploadCheck(token, applicantId) {
                 }, 2000);
 
             } else if (data.status === 'expired') {
-                clearInterval(uploadCheckInterval);
+                clearInterval(window.uploadCheckInterval);
+                window.uploadCheckInterval = null;
                 document.getElementById('upload_status_text').innerHTML = '<i class="fas fa-exclamation-triangle mr-2"></i>Upload link expired. Please generate a new one.';
                 document.getElementById('upload_status').classList.remove('alert-info');
                 document.getElementById('upload_status').classList.add('alert-warning');
@@ -322,43 +345,111 @@ function startUploadCheck(token, applicantId) {
     }, 3000); // Check every 3 seconds
 }
 
-// File preview for computer upload
-document.addEventListener('DOMContentLoaded', function() {
+// Initialize document upload UI elements - call this on page load and after AJAX loads
+window.initDocumentUploadUI = function() {
+    // File preview for computer upload
     const fileInput = document.getElementById('document_file');
-    if (fileInput) {
+    if (fileInput && !fileInput.dataset.initialized) {
+        fileInput.dataset.initialized = 'true';
         fileInput.addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
                 // Update label
                 const label = fileInput.nextElementSibling;
-                label.textContent = file.name;
+                if (label) label.textContent = file.name;
 
                 // Show preview for images
-                if (file.type.startsWith('image/')) {
+                const previewImg = document.getElementById('preview_image');
+                const filePreview = document.getElementById('file_preview');
+                if (file.type.startsWith('image/') && previewImg && filePreview) {
                     const reader = new FileReader();
                     reader.onload = function(e) {
-                        document.getElementById('preview_image').src = e.target.result;
-                        document.getElementById('file_preview').style.display = 'block';
+                        previewImg.src = e.target.result;
+                        filePreview.style.display = 'block';
                     };
                     reader.readAsDataURL(file);
-                } else {
-                    document.getElementById('file_preview').style.display = 'none';
+                } else if (filePreview) {
+                    filePreview.style.display = 'none';
                 }
             }
         });
     }
-});
 
-// Clean up interval when modal closes
-document.addEventListener('DOMContentLoaded', function() {
+    // Clean up interval when modal closes
     const uploadModal = document.getElementById('uploadModal');
-    if (uploadModal) {
+    if (uploadModal && !uploadModal.dataset.initialized) {
+        uploadModal.dataset.initialized = 'true';
         uploadModal.addEventListener('hidden.bs.modal', function () {
-            if (uploadCheckInterval) {
-                clearInterval(uploadCheckInterval);
-                uploadCheckInterval = null;
+            if (window.uploadCheckInterval) {
+                clearInterval(window.uploadCheckInterval);
+                window.uploadCheckInterval = null;
             }
         });
     }
-});
+};
+
+// Run initialization on DOMContentLoaded
+document.addEventListener('DOMContentLoaded', window.initDocumentUploadUI);
+
+// Also run immediately in case DOM is already loaded (for AJAX loads)
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    window.initDocumentUploadUI();
+}
+
+// Toggle visibility of uploaded files for a document type
+window.showDocumentFiles = function(docType) {
+    const filesDiv = document.getElementById('files-' + docType);
+    if (filesDiv) {
+        filesDiv.style.display = filesDiv.style.display === 'none' ? 'block' : 'none';
+    }
+}
+function showDocumentFiles(docType) { window.showDocumentFiles(docType); }
+
+// Delete a document
+window.deleteDocument = async function(docId, applicantId) {
+    if (!confirm('Are you sure you want to delete this document?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/applicants/documents/delete', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({
+                document_id: docId,
+                applicant_id: applicantId
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('Failed to delete document: ' + (data.message || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error deleting document:', error);
+        alert('Failed to delete document. Please try again.');
+    }
+}
+function deleteDocument(docId, applicantId) { window.deleteDocument(docId, applicantId); }
+
+// Download document using iframe (most reliable method, bypasses all routing)
+window.downloadDocument = function(entity, docId, fileName) {
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = '/download.php?entity=' + encodeURIComponent(entity) + '&id=' + encodeURIComponent(docId);
+    document.body.appendChild(iframe);
+
+    setTimeout(function() {
+        if (iframe.parentNode) {
+            iframe.parentNode.removeChild(iframe);
+        }
+    }, 30000);
+};
+function downloadDocument(entity, docId, fileName) { window.downloadDocument(entity, docId, fileName); }
 </script>

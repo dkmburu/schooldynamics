@@ -90,6 +90,8 @@ Router::post('/applicants/stage-transition', 'ApplicantsController@stageTransiti
 Router::post('/applicants/update', 'ApplicantsController@update');
 
 // Guardian Management
+Router::get('/applicants/guardians/search', 'ApplicantsController@searchGuardian');
+Router::get('/applicants/guardians/get/:id', 'ApplicantsController@getGuardian');
 Router::post('/applicants/guardians/store', 'ApplicantsController@storeGuardian');
 Router::post('/applicants/guardians/update', 'ApplicantsController@updateGuardian');
 Router::post('/applicants/guardians/set-primary', 'ApplicantsController@setPrimaryGuardian');
@@ -255,6 +257,76 @@ Router::post('/finance/expenses/api/payments', 'ExpensesController@storeSupplier
 Router::get('/finance/expenses/api/payments/:id', 'ExpensesController@getSupplierPayment');
 Router::post('/finance/expenses/api/payments/:id/approve', 'ExpensesController@approveSupplierPayment');
 
+// Budgets
+Router::get('/finance/budgets', 'BudgetsController@index');
+Router::get('/finance/budgets/:tab', 'BudgetsController@index');
+
+// Budget API
+Router::get('/finance/budgets/api/budgets/:id', 'BudgetsController@getBudget');
+Router::post('/finance/budgets/api/budgets', 'BudgetsController@storeBudget');
+Router::post('/finance/budgets/api/budgets/:id', 'BudgetsController@updateBudget');
+Router::post('/finance/budgets/api/budgets/:id/delete', 'BudgetsController@deleteBudget');
+Router::post('/finance/budgets/api/budgets/:id/submit', 'BudgetsController@submitForApproval');
+Router::post('/finance/budgets/api/budgets/:id/approve', 'BudgetsController@approveBudget');
+Router::post('/finance/budgets/api/budgets/:id/reject', 'BudgetsController@rejectBudget');
+Router::post('/finance/budgets/api/budgets/:id/allocations', 'BudgetsController@updateAllocations');
+Router::post('/finance/budgets/api/budgets/:id/replicate', 'BudgetsController@replicateAllocations');
+
+// Budget Overruns API
+Router::post('/finance/budgets/api/overruns/:id/approve', 'BudgetsController@approveOverrun');
+Router::post('/finance/budgets/api/overruns/:id/reject', 'BudgetsController@rejectOverrun');
+Router::get('/finance/budgets/api/check-availability', 'BudgetsController@checkBudgetAvailability');
+Router::post('/finance/budgets/api/request-overrun', 'BudgetsController@requestOverrunApproval');
+
+// Budget Periods API
+Router::post('/finance/budgets/api/periods', 'BudgetsController@storePeriod');
+
+// =========================================================================
+// HR & PAYROLL MODULE
+// =========================================================================
+
+// Dashboard
+Router::get('/hr-payroll', 'HRPayrollController@index');
+
+// Staff Management
+Router::get('/hr-payroll/staff', 'HRPayrollController@staff');
+Router::get('/hr-payroll/staff/create', 'HRPayrollController@createStaff');
+Router::post('/hr-payroll/staff', 'HRPayrollController@storeStaff');
+Router::get('/hr-payroll/staff/:id', 'HRPayrollController@showStaff');
+Router::get('/hr-payroll/staff/:id/edit', 'HRPayrollController@editStaff');
+Router::post('/hr-payroll/staff/:id', 'HRPayrollController@updateStaff');
+
+// Payroll Processing
+Router::get('/hr-payroll/payroll', 'HRPayrollController@payroll');
+
+// Payslips
+Router::get('/hr-payroll/payslips', 'HRPayrollController@payslips');
+
+// Salary Structures
+Router::get('/hr-payroll/salary-structures', 'HRPayrollController@salaryStructures');
+
+// Allowances & Deductions (Pay Components)
+Router::get('/hr-payroll/components', 'HRPayrollController@components');
+
+// Loans & Advances
+Router::get('/hr-payroll/loans', 'HRPayrollController@loans');
+
+// Statutory Deductions
+Router::get('/hr-payroll/statutory', 'HRPayrollController@statutory');
+
+// Payroll Reports
+Router::get('/hr-payroll/reports', 'HRPayrollController@reports');
+
+// Staff Document Uploads
+Router::post('/hr-payroll/documents/generate-upload-token', 'HRPayrollController@generateDocumentUploadToken');
+Router::get('/hr-payroll/documents/check-upload-status/:token', 'HRPayrollController@checkDocumentUploadStatus');
+Router::get('/hr-payroll/documents/capture/:token', 'HRPayrollController@showPhoneCapture');
+Router::post('/hr-payroll/documents/upload-from-phone', 'HRPayrollController@uploadDocumentFromPhone');
+Router::post('/hr-payroll/documents/upload', 'HRPayrollController@uploadDocument');
+Router::post('/hr-payroll/documents/delete', 'HRPayrollController@deleteDocument');
+Router::get('/hr-payroll/documents/download/:id', 'HRPayrollController@downloadDocument');
+Router::post('/hr-payroll/staff/upload-photo', 'HRPayrollController@uploadStaffPhotoAjax');
+
 // Academics
 Router::get('/academics/classes', 'ClassesController@index');
 Router::get('/academics/subjects', 'SubjectsController@index');
@@ -264,9 +336,23 @@ Router::get('/academics/attendance', 'AttendanceController@index');
 Router::get('/assessment/exams', 'ExamsController@index');
 Router::get('/assessment/grades', 'GradesController@index');
 
-// Communication
+// Communication - Message Queue
 Router::get('/communication/messages', 'MessagesController@index');
+Router::get('/communication/messages/export', 'MessagesController@export');
+Router::get('/communication/messages/:id', 'MessagesController@show');
+Router::post('/communication/messages/:id/retry', 'MessagesController@retry');
+Router::post('/communication/messages/:id/cancel', 'MessagesController@cancel');
+Router::post('/communication/messages/bulk-retry', 'MessagesController@bulkRetry');
+
+// Communication - Templates
 Router::get('/communication/templates', 'MessageTemplatesController@index');
+Router::get('/communication/templates/create', 'MessageTemplatesController@create');
+Router::post('/communication/templates', 'MessageTemplatesController@store');
+Router::get('/communication/templates/:id/edit', 'MessageTemplatesController@edit');
+Router::post('/communication/templates/:id', 'MessageTemplatesController@update');
+Router::post('/communication/templates/:id/delete', 'MessageTemplatesController@delete');
+Router::post('/communication/templates/:id/toggle', 'MessageTemplatesController@toggleStatus');
+Router::get('/communication/templates/:id/preview', 'MessageTemplatesController@preview');
 
 // Reports
 Router::get('/reports', 'ReportsController@index');
@@ -319,3 +405,177 @@ Router::post('/workflow/admin/save', 'WorkflowController@saveWorkflow');
 // Workflow API Endpoints
 Router::get('/api/workflow/available', 'WorkflowController@getAvailableWorkflows');
 Router::get('/api/workflow/task-counts', 'WorkflowController@getTaskCounts');
+
+// Field Audit Trail API Endpoints
+Router::get('/api/audit/check', 'AuditController@checkFieldHistory');
+Router::get('/api/audit/history', 'AuditController@getFieldHistory');
+Router::get('/api/audit/entity/:entityType/:entityId', 'AuditController@getEntityHistory');
+
+// =========================================================================
+// SETTINGS - USERS & ROLES MANAGEMENT (RBAC)
+// =========================================================================
+
+// Users Management
+Router::get('/settings/users', 'UsersController@index');
+Router::get('/settings/users/create', 'UsersController@create');
+Router::post('/settings/users', 'UsersController@store');
+Router::get('/settings/users/:id/edit', 'UsersController@edit');
+Router::post('/settings/users/:id', 'UsersController@update');
+Router::post('/settings/users/:id/delete', 'UsersController@destroy');
+Router::post('/settings/users/:id/toggle-status', 'UsersController@toggleStatus');
+
+// Roles Management
+Router::get('/settings/roles/create', 'RolesController@create');
+Router::post('/settings/roles', 'RolesController@store');
+Router::get('/settings/roles/:id/edit', 'RolesController@edit');
+Router::post('/settings/roles/:id', 'RolesController@update');
+Router::post('/settings/roles/:id/delete', 'RolesController@destroy');
+Router::post('/settings/roles/:id/clone', 'RolesController@clone');
+
+// =========================================================================
+// PARENT PORTAL (External Users - SMS OTP Authentication)
+// =========================================================================
+
+// Public Parent Routes (no parent auth required)
+Router::get('/parent', function() {
+    if (isset($_SESSION['parent_logged_in']) && $_SESSION['parent_logged_in'] === true) {
+        Response::redirect('/parent/dashboard');
+    } else {
+        Response::redirect('/parent/login');
+    }
+});
+
+// Login Flow (SMS OTP)
+Router::get('/parent/login', 'ParentAuthController@showLogin');
+Router::post('/parent/login', 'ParentAuthController@login');
+Router::get('/parent/verify-otp', 'ParentAuthController@showVerifyOtp');
+Router::post('/parent/verify-otp', 'ParentAuthController@verifyOtp');
+Router::post('/parent/resend-otp', 'ParentAuthController@resendOtp');
+Router::get('/parent/logout', 'ParentAuthController@logout');
+
+// Registration Flow (SMS Magic Link)
+Router::get('/parent/register', 'ParentAuthController@showRegister');
+Router::post('/parent/register', 'ParentAuthController@register');
+Router::get('/parent/registration-sent', 'ParentAuthController@showRegistrationSent');
+Router::get('/parent/activate/:token', 'ParentAuthController@verifyMagicLink');
+
+// Protected Parent Routes (require parent auth)
+Router::get('/parent/dashboard', 'ParentDashboardController@index');
+Router::get('/parent/profile', 'ParentDashboardController@profile');
+
+// Notifications
+Router::get('/parent/notifications', 'ParentNotificationsController@index');
+Router::get('/parent/notifications/:id', 'ParentNotificationsController@show');
+Router::post('/parent/notifications/:id/mark-read', 'ParentNotificationsController@markAsRead');
+Router::get('/parent/notifications/mark-all-read', 'ParentNotificationsController@markAllAsRead');
+Router::post('/parent/notifications/:id/dismiss', 'ParentNotificationsController@dismiss');
+
+// Contacts
+Router::get('/parent/contacts', 'ParentContactsController@index');
+
+// Student Linking
+Router::get('/parent/link-student', 'ParentDashboardController@showLinkStudent');
+Router::post('/parent/link-student', 'ParentDashboardController@linkStudent');
+Router::get('/parent/link-requests', 'ParentDashboardController@linkRequests');
+
+// Child-specific views (parent must have access to the child)
+Router::get('/parent/child/:studentId/profile', 'ParentDashboardController@childProfile');
+Router::get('/parent/child/:studentId/fees', 'ParentDashboardController@fees');
+Router::get('/parent/child/:studentId/attendance', 'ParentDashboardController@attendance');
+
+// =========================================================================
+// PORTAL MANAGEMENT (Admin interface for external portals)
+// =========================================================================
+
+// Parent Portal Management
+Router::get('/portals/parents', 'PortalManagementController@parentAccounts');
+Router::get('/portals/parents/pending', 'PortalManagementController@parentPending');
+Router::get('/portals/parents/notifications', 'PortalManagementController@parentNotifications');
+Router::post('/portals/parents/notifications/send', 'PortalManagementController@sendParentNotification');
+Router::get('/portals/parents/settings', 'PortalManagementController@parentSettings');
+Router::post('/portals/parents/settings', 'PortalManagementController@updateParentSettings');
+Router::get('/portals/parents/:id', 'PortalManagementController@viewParent');
+Router::post('/portals/parents/:id/approve', 'PortalManagementController@approveParent');
+Router::post('/portals/parents/:id/reject', 'PortalManagementController@rejectParent');
+Router::post('/portals/parents/:id/suspend', 'PortalManagementController@suspendParent');
+Router::post('/portals/parents/:id/activate', 'PortalManagementController@activateParent');
+Router::post('/portals/parents/:id/resend-activation', 'PortalManagementController@resendActivation');
+Router::post('/portals/parents/:id/delete', 'PortalManagementController@deleteParent');
+Router::post('/portals/parents/approve-all', 'PortalManagementController@approveAllPending');
+
+// Student Linkage Request Management
+Router::get('/portals/parents/linkage-requests', 'PortalManagementController@linkageRequests');
+Router::get('/portals/parents/linkage-requests/:id', 'PortalManagementController@viewLinkageRequest');
+Router::post('/portals/parents/linkage-requests/:id/approve', 'PortalManagementController@approveLinkageRequest');
+Router::post('/portals/parents/linkage-requests/:id/reject', 'PortalManagementController@rejectLinkageRequest');
+Router::post('/portals/parents/linkage-requests/approve-bulk', 'PortalManagementController@approveBulkLinkageRequests');
+
+// Supplier Portal Management (Future)
+// Router::get('/portals/suppliers', 'PortalManagementController@supplierAccounts');
+
+// Driver Portal Management (Future)
+// Router::get('/portals/drivers', 'PortalManagementController@driverAccounts');
+
+// Alumni Portal Management (Future)
+// Router::get('/portals/alumni', 'PortalManagementController@alumniAccounts');
+
+// =========================================================================
+// CALENDAR MODULE
+// =========================================================================
+
+// Calendar Dashboard
+Router::get('/calendar', 'CalendarController@index');
+
+// Academic Terms
+Router::get('/calendar/terms', 'CalendarController@terms');
+Router::get('/calendar/terms/create', 'CalendarController@createTerm');
+Router::post('/calendar/terms/create', 'CalendarController@storeTerm');
+Router::get('/calendar/terms/:id', 'CalendarController@showTerm');
+Router::get('/calendar/terms/:id/edit', 'CalendarController@editTerm');
+Router::post('/calendar/terms/:id/edit', 'CalendarController@updateTerm');
+Router::post('/calendar/terms/:id/delete', 'CalendarController@deleteTerm');
+
+// Important Dates
+Router::post('/calendar/terms/:id/dates', 'CalendarController@addImportantDate');
+Router::post('/calendar/dates/:id/update', 'CalendarController@updateImportantDate');
+Router::post('/calendar/dates/:id/delete', 'CalendarController@deleteImportantDate');
+
+// National Holidays
+Router::get('/calendar/holidays', 'CalendarController@holidays');
+
+// Events Management
+Router::get('/calendar/events', 'EventsController@index');
+Router::get('/calendar/events/create', 'EventsController@create');
+Router::post('/calendar/events/create', 'EventsController@store');
+Router::get('/calendar/events/:id', 'EventsController@show');
+Router::get('/calendar/events/:id/edit', 'EventsController@edit');
+Router::post('/calendar/events/:id/edit', 'EventsController@update');
+Router::post('/calendar/events/:id/delete', 'EventsController@delete');
+
+// Communication Module - Broadcasts
+Router::get('/communication/broadcasts', 'BroadcastsController@index');
+Router::get('/communication/broadcasts/create', 'BroadcastsController@create');
+Router::post('/communication/broadcasts/create', 'BroadcastsController@store');
+Router::get('/communication/broadcasts/:id', 'BroadcastsController@show');
+Router::get('/communication/broadcasts/:id/edit', 'BroadcastsController@edit');
+Router::post('/communication/broadcasts/:id/edit', 'BroadcastsController@update');
+Router::post('/communication/broadcasts/:id/delete', 'BroadcastsController@delete');
+Router::post('/communication/broadcasts/:id/cancel', 'BroadcastsController@cancel');
+
+// Communication Credits (placeholder for future implementation)
+Router::get('/communication/credits', function() {
+    flash('info', 'Communication Credits module coming soon');
+    Response::redirect('/communication/broadcasts');
+});
+
+// Broadcast Approvals (placeholder for future implementation)
+Router::get('/communication/approvals', function() {
+    flash('info', 'Broadcast Approvals module coming soon');
+    Response::redirect('/communication/broadcasts');
+});
+
+// Broadcast History (placeholder for future implementation)
+Router::get('/communication/history', function() {
+    flash('info', 'Broadcast History module coming soon');
+    Response::redirect('/communication/broadcasts');
+});

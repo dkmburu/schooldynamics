@@ -86,38 +86,34 @@ class AuthController
                     'id' => $user['id']
                 ]);
 
-                // Get user roles and permissions
-                $stmt = $pdo->prepare("
-                    SELECT r.id, r.name, r.display_name
-                    FROM roles r
-                    INNER JOIN user_roles ur ON ur.role_id = r.id
-                    WHERE ur.user_id = :user_id
-                ");
-                $stmt->execute(['user_id' => $user['id']]);
-                $roles = $stmt->fetchAll();
-
-                // Get all permissions for user's roles
-                $roleIds = array_column($roles, 'id');
-                if (!empty($roleIds)) {
-                    $placeholders = implode(',', array_fill(0, count($roleIds), '?'));
+                // Get user's single role (new RBAC: one user = one role)
+                $role = null;
+                if ($user['role_id']) {
                     $stmt = $pdo->prepare("
-                        SELECT DISTINCT p.name, p.action, s.name as submodule, m.name as module
+                        SELECT id, name, display_name
+                        FROM roles
+                        WHERE id = :role_id
+                    ");
+                    $stmt->execute(['role_id' => $user['role_id']]);
+                    $role = $stmt->fetch();
+                }
+
+                // Get all permissions for user's role
+                $userPermissions = [];
+                if ($role) {
+                    $stmt = $pdo->prepare("
+                        SELECT DISTINCT p.name
                         FROM permissions p
                         INNER JOIN role_permissions rp ON rp.permission_id = p.id
-                        INNER JOIN submodules s ON s.id = p.submodule_id
-                        INNER JOIN modules m ON m.id = s.module_id
-                        WHERE rp.role_id IN ({$placeholders})
+                        WHERE rp.role_id = :role_id
                     ");
-                    $stmt->execute($roleIds);
+                    $stmt->execute(['role_id' => $role['id']]);
                     $permissions = $stmt->fetchAll();
 
-                    // Build permission array (e.g., 'students.view', 'finance.write')
-                    $userPermissions = [];
+                    // Build permission array (e.g., 'Students.Applications.view')
                     foreach ($permissions as $perm) {
-                        $userPermissions[] = $perm['module'] . '.' . $perm['submodule'] . '.' . $perm['action'];
+                        $userPermissions[] = $perm['name'];
                     }
-                } else {
-                    $userPermissions = [];
                 }
 
                 // Create session
@@ -126,7 +122,8 @@ class AuthController
                 $_SESSION['username'] = $user['username'];
                 $_SESSION['full_name'] = $user['full_name'];
                 $_SESSION['email'] = $user['email'];
-                $_SESSION['user_roles'] = $roles;
+                $_SESSION['user_role'] = $role; // Single role (new RBAC)
+                $_SESSION['user_roles'] = $role ? [$role] : []; // For backward compatibility
                 $_SESSION['user_permissions'] = $userPermissions;
                 $_SESSION['tenant_id'] = $tenant['id'];
                 $_SESSION['school_id'] = $tenant['id']; // For compatibility with finance/admission modules

@@ -110,12 +110,12 @@ function getDocumentStatusBadge($status) {
                                 </td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
-                                        <a href="/download.php?entity=applicants&id=<?= $doc['id'] ?>" class="btn btn-sm btn-info" title="Download" data-no-ajax="true">
-                                            <i class="fas fa-download"></i>
-                                        </a>
+                                        <button type="button" class="btn btn-sm btn-info" title="Download" onclick="downloadDocument('applicants', <?= $doc['id'] ?>, '<?= e($doc['file_name']) ?>')">
+                                            <i class="fas fa-download me-1"></i> Download
+                                        </button>
                                         <?php if (hasPermission('Students.write') || Gate::hasRole('ADMIN')): ?>
                                             <button class="btn btn-sm btn-danger" onclick="deleteDocument(<?= $doc['id'] ?>, <?= $applicant['id'] ?>)" title="Delete">
-                                                <i class="fas fa-trash"></i>
+                                                <i class="fas fa-trash me-1"></i> Delete
                                             </button>
                                         <?php endif; ?>
                                     </div>

@@ -1239,6 +1239,92 @@ class StudentsController
                 return Response::json(['success' => false, 'message' => 'Guardian not found'], 404);
             }
 
+            // Get student_guardians record for audit trail entity
+            $stmt = $pdo->prepare("SELECT id FROM student_guardians WHERE student_id = :student_id AND guardian_id = :guardian_id");
+            $stmt->execute(['student_id' => $id, 'guardian_id' => $guardianId]);
+            $studentGuardian = $stmt->fetch();
+            $studentGuardianId = $studentGuardian ? $studentGuardian['id'] : $guardianId;
+
+            // Parse field change reasons from JSON
+            $fieldChangeReasons = json_decode(Request::post('field_change_reasons') ?: '{}', true);
+
+            // Define audited fields
+            $auditedFields = [
+                'id_number' => ['label' => 'National ID / Passport', 'requiresReason' => true],
+                'first_name' => ['label' => 'First Name', 'requiresReason' => false],
+                'last_name' => ['label' => 'Last Name', 'requiresReason' => false],
+                'phone' => ['label' => 'Phone Number', 'requiresReason' => false],
+                'email' => ['label' => 'Email Address', 'requiresReason' => false],
+            ];
+
+            // Check which fields changed and validate required reasons
+            $changedFields = [];
+            $newValues = [
+                'id_number' => Request::post('id_number'),
+                'first_name' => Request::post('first_name'),
+                'last_name' => Request::post('last_name'),
+                'phone' => Request::post('phone'),
+                'email' => Request::post('email'),
+            ];
+
+            foreach ($auditedFields as $fieldName => $config) {
+                $oldValue = $oldGuardian[$fieldName] ?? '';
+                $newValue = $newValues[$fieldName] ?? '';
+
+                if ($oldValue !== $newValue) {
+                    // Check if reason is required but not provided
+                    if ($config['requiresReason'] && empty($fieldChangeReasons[$fieldName])) {
+                        return Response::json([
+                            'success' => false,
+                            'message' => "Please provide a reason for changing the {$config['label']}"
+                        ], 400);
+                    }
+                    $changedFields[$fieldName] = [
+                        'old' => $oldValue,
+                        'new' => $newValue,
+                        'reason' => $fieldChangeReasons[$fieldName] ?? null,
+                        'label' => $config['label']
+                    ];
+                }
+            }
+
+            // Validate ID number uniqueness if changed
+            if (isset($changedFields['id_number'])) {
+                $stmt = $pdo->prepare("SELECT id FROM guardians WHERE id_number = ? AND id != ?");
+                $stmt->execute([Request::post('id_number'), $guardianId]);
+                if ($stmt->fetch()) {
+                    return Response::json([
+                        'success' => false,
+                        'message' => 'This ID number is already used by another guardian'
+                    ], 400);
+                }
+            }
+
+            $pdo->beginTransaction();
+
+            // Log all field changes to field_audit_trail
+            $userName = $_SESSION['full_name'] ?? 'Unknown';
+            foreach ($changedFields as $fieldName => $change) {
+                $stmt = $pdo->prepare("
+                    INSERT INTO field_audit_trail (
+                        entity_type, entity_id, field_name, old_value, new_value,
+                        changed_by_user_id, changed_by_name, change_reason, ip_address, user_agent
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ");
+                $stmt->execute([
+                    'student_guardians',
+                    $studentGuardianId,
+                    $fieldName,
+                    $change['old'],
+                    $change['new'],
+                    authUserId(),
+                    $userName,
+                    $change['reason'],
+                    Request::ip(),
+                    Request::userAgent()
+                ]);
+            }
+
             // Update guardian info
             $stmt = $pdo->prepare("
                 UPDATE guardians SET
@@ -1281,27 +1367,19 @@ class StudentsController
                 'can_pickup' => $canPickup
             ]);
 
-            // Build change description for audit
-            $changes = [];
-            if ($oldGuardian['first_name'] != Request::post('first_name')) {
-                $changes[] = "First name: {$oldGuardian['first_name']} → " . Request::post('first_name');
-            }
-            if ($oldGuardian['last_name'] != Request::post('last_name')) {
-                $changes[] = "Last name: {$oldGuardian['last_name']} → " . Request::post('last_name');
-            }
-            if ($oldGuardian['phone'] != Request::post('phone')) {
-                $changes[] = "Phone: {$oldGuardian['phone']} → " . Request::post('phone');
-            }
-            if ($oldGuardian['email'] != Request::post('email')) {
-                $changes[] = "Email: {$oldGuardian['email']} → " . Request::post('email');
-            }
-
-            $changeDesc = !empty($changes) ? implode('; ', $changes) : 'Guardian info updated';
+            // Build change description for general audit log
+            $changeLabels = array_map(fn($c) => $c['label'], $changedFields);
+            $changeDesc = !empty($changeLabels) ? 'Changed: ' . implode(', ', $changeLabels) : 'Guardian info updated';
             $this->logActivity($pdo, $id, 'guardian_updated', "Guardian #{$guardianId} updated. " . $changeDesc);
+
+            $pdo->commit();
 
             return Response::json(['success' => true, 'message' => 'Guardian updated']);
 
         } catch (Exception $e) {
+            if (isset($pdo)) {
+                $pdo->rollBack();
+            }
             error_log("StudentsController::updateGuardian error: " . $e->getMessage());
             return Response::json(['success' => false, 'message' => $e->getMessage()], 500);
         }

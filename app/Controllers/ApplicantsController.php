@@ -1542,7 +1542,150 @@ class ApplicantsController
     }
 
     /**
+     * Search for existing guardian by ID number (National ID/Passport)
+     * Returns JSON response for AJAX
+     */
+    public function searchGuardian()
+    {
+        if (!isAuthenticated()) {
+            Response::json(['success' => false, 'message' => 'Authentication required'], 401);
+            return;
+        }
+
+        try {
+            $pdo = Database::getTenantConnection();
+            $idNumber = trim(Request::get('id_number', ''));
+            $applicantId = Request::get('applicant_id');
+
+            if (empty($idNumber)) {
+                Response::json(['success' => false, 'message' => 'ID number is required']);
+                return;
+            }
+
+            // Search in the main guardians table
+            $stmt = $pdo->prepare("
+                SELECT g.*,
+                       (SELECT COUNT(*) FROM student_guardians sg WHERE sg.guardian_id = g.id) as linked_students,
+                       (SELECT COUNT(*) FROM applicant_guardians ag WHERE ag.id_number = g.id_number) as linked_applicants
+                FROM guardians g
+                WHERE g.id_number = ?
+            ");
+            $stmt->execute([$idNumber]);
+            $guardian = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($guardian) {
+                // Check if already linked to this applicant
+                $stmt = $pdo->prepare("SELECT id FROM applicant_guardians WHERE applicant_id = ? AND id_number = ?");
+                $stmt->execute([$applicantId, $idNumber]);
+                $alreadyLinked = $stmt->fetch();
+
+                Response::json([
+                    'success' => true,
+                    'found' => true,
+                    'already_linked' => !empty($alreadyLinked),
+                    'guardian' => [
+                        'id' => $guardian['id'],
+                        'first_name' => $guardian['first_name'],
+                        'last_name' => $guardian['last_name'],
+                        'email' => $guardian['email'],
+                        'phone' => $guardian['phone'],
+                        'id_number' => $guardian['id_number'],
+                        'address' => $guardian['address'],
+                        'occupation' => $guardian['occupation'],
+                        'linked_students' => (int)$guardian['linked_students'],
+                        'linked_applicants' => (int)$guardian['linked_applicants']
+                    ]
+                ]);
+            } else {
+                // Also check applicant_guardians table for matches
+                $stmt = $pdo->prepare("
+                    SELECT ag.*, CONCAT(a.first_name, ' ', a.last_name) as applicant_name
+                    FROM applicant_guardians ag
+                    JOIN applicants a ON ag.applicant_id = a.id
+                    WHERE ag.id_number = ?
+                    LIMIT 1
+                ");
+                $stmt->execute([$idNumber]);
+                $existingApplicantGuardian = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if ($existingApplicantGuardian) {
+                    // Found in applicant_guardians but not in main guardians table
+                    // This is legacy data - we should migrate it
+                    Response::json([
+                        'success' => true,
+                        'found' => true,
+                        'legacy' => true,
+                        'guardian' => [
+                            'id' => $existingApplicantGuardian['id'],
+                            'first_name' => $existingApplicantGuardian['first_name'],
+                            'last_name' => $existingApplicantGuardian['last_name'],
+                            'email' => $existingApplicantGuardian['email'],
+                            'phone' => $existingApplicantGuardian['phone'],
+                            'id_number' => $existingApplicantGuardian['id_number'],
+                            'address' => $existingApplicantGuardian['address'],
+                            'occupation' => $existingApplicantGuardian['occupation'],
+                            'linked_to_applicant' => $existingApplicantGuardian['applicant_name']
+                        ]
+                    ]);
+                } else {
+                    Response::json([
+                        'success' => true,
+                        'found' => false,
+                        'message' => 'No guardian found with this ID number'
+                    ]);
+                }
+            }
+        } catch (Exception $e) {
+            logMessage("Guardian search error: " . $e->getMessage(), 'error');
+            Response::json(['success' => false, 'message' => 'Search failed: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Get guardian details by ID (for linking existing guardian)
+     * Returns JSON response for AJAX
+     */
+    public function getGuardian($id)
+    {
+        if (!isAuthenticated()) {
+            Response::json(['success' => false, 'message' => 'Authentication required'], 401);
+            return;
+        }
+
+        try {
+            $pdo = Database::getTenantConnection();
+
+            // First try main guardians table
+            $stmt = $pdo->prepare("SELECT * FROM guardians WHERE id = ?");
+            $stmt->execute([$id]);
+            $guardian = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($guardian) {
+                Response::json([
+                    'success' => true,
+                    'guardian' => [
+                        'id' => $guardian['id'],
+                        'first_name' => $guardian['first_name'],
+                        'last_name' => $guardian['last_name'],
+                        'email' => $guardian['email'],
+                        'phone' => $guardian['phone'],
+                        'id_number' => $guardian['id_number'],
+                        'address' => $guardian['address'],
+                        'occupation' => $guardian['occupation']
+                    ]
+                ]);
+            } else {
+                Response::json(['success' => false, 'message' => 'Guardian not found'], 404);
+            }
+        } catch (Exception $e) {
+            logMessage("Get guardian error: " . $e->getMessage(), 'error');
+            Response::json(['success' => false, 'message' => 'Failed to fetch guardian'], 500);
+        }
+    }
+
+    /**
      * Store new guardian for an applicant
+     * Handles both linking existing guardians and creating new ones
      */
     public function storeGuardian()
     {
@@ -1558,19 +1701,13 @@ class ApplicantsController
             $pdo = Database::getTenantConnection();
 
             $applicantId = Request::get('applicant_id');
-            $firstName = Request::get('first_name');
-            $lastName = Request::get('last_name');
+            $existingGuardian = Request::get('existing_guardian') == '1';
+            $existingGuardianId = Request::get('existing_guardian_id');
             $relationship = Request::get('relationship');
-            $phone = Request::get('phone');
-            $email = Request::get('email');
-            $idNumber = Request::get('id_number');
-            $occupation = Request::get('occupation');
-            $employer = Request::get('employer');
-            $address = Request::get('address');
             $isPrimary = Request::get('is_primary') ? 1 : 0;
 
-            // Validation
-            if (empty($applicantId) || empty($firstName) || empty($lastName) || empty($relationship) || empty($phone)) {
+            // Common validation
+            if (empty($applicantId) || empty($relationship)) {
                 flash('error', 'Please fill in all required fields');
                 Response::back();
             }
@@ -1602,20 +1739,115 @@ class ApplicantsController
                 $stmt->execute([$applicantId]);
             }
 
-            // Insert guardian
-            $stmt = $pdo->prepare("
-                INSERT INTO applicant_guardians (
-                    applicant_id, first_name, last_name, relationship, phone, email,
-                    id_number, occupation, employer, address, is_primary, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-            ");
+            if ($existingGuardian && !empty($existingGuardianId)) {
+                // Link existing guardian from the main guardians table
+                $stmt = $pdo->prepare("SELECT * FROM guardians WHERE id = ?");
+                $stmt->execute([$existingGuardianId]);
+                $guardian = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            $stmt->execute([
-                $applicantId, $firstName, $lastName, $relationship, $phone, $email,
-                $idNumber, $occupation, $employer, $address, $isPrimary
-            ]);
+                if (!$guardian) {
+                    $pdo->rollBack();
+                    flash('error', 'Guardian not found');
+                    Response::back();
+                }
 
-            $guardianId = $pdo->lastInsertId();
+                // Check if already linked
+                $stmt = $pdo->prepare("SELECT id FROM applicant_guardians WHERE applicant_id = ? AND id_number = ?");
+                $stmt->execute([$applicantId, $guardian['id_number']]);
+                if ($stmt->fetch()) {
+                    $pdo->rollBack();
+                    flash('error', 'This guardian is already linked to this applicant');
+                    Response::back();
+                }
+
+                // Create applicant_guardian link using data from main guardians table
+                $stmt = $pdo->prepare("
+                    INSERT INTO applicant_guardians (
+                        applicant_id, first_name, last_name, relationship, phone, email,
+                        id_number, occupation, employer, address, is_primary, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                ");
+
+                $stmt->execute([
+                    $applicantId,
+                    $guardian['first_name'],
+                    $guardian['last_name'],
+                    $relationship,
+                    $guardian['phone'],
+                    $guardian['email'],
+                    $guardian['id_number'],
+                    $guardian['occupation'],
+                    null, // employer not in main table
+                    $guardian['address'],
+                    $isPrimary
+                ]);
+
+                $auditDesc = "Guardian linked: {$guardian['first_name']} {$guardian['last_name']} ({$relationship})";
+
+            } else {
+                // Create new guardian - ID number is now required
+                $firstName = Request::get('first_name');
+                $lastName = Request::get('last_name');
+                $phone = Request::get('phone');
+                $email = Request::get('email');
+                $idNumber = trim(Request::get('id_number'));
+                $occupation = Request::get('occupation');
+                $employer = Request::get('employer');
+                $address = Request::get('address');
+
+                // Validation for new guardian
+                if (empty($firstName) || empty($lastName) || empty($phone) || empty($idNumber)) {
+                    $pdo->rollBack();
+                    flash('error', 'First name, last name, phone, and ID number are required');
+                    Response::back();
+                }
+
+                // Check if ID number already exists in main guardians table
+                $stmt = $pdo->prepare("SELECT id FROM guardians WHERE id_number = ?");
+                $stmt->execute([$idNumber]);
+                if ($stmt->fetch()) {
+                    $pdo->rollBack();
+                    flash('error', 'A guardian with this ID number already exists. Please search and link instead.');
+                    Response::back();
+                }
+
+                // Check if ID number already exists in applicant_guardians
+                $stmt = $pdo->prepare("SELECT id FROM applicant_guardians WHERE id_number = ?");
+                $stmt->execute([$idNumber]);
+                if ($stmt->fetch()) {
+                    $pdo->rollBack();
+                    flash('error', 'A guardian with this ID number already exists in another applicant record. Please search and link instead.');
+                    Response::back();
+                }
+
+                // First insert into the main guardians table
+                $stmt = $pdo->prepare("
+                    INSERT INTO guardians (
+                        first_name, last_name, email, phone, id_number, address, occupation, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+                ");
+
+                $stmt->execute([
+                    $firstName, $lastName, $email, $phone, $idNumber, $address, $occupation
+                ]);
+
+                $mainGuardianId = $pdo->lastInsertId();
+
+                // Then insert into applicant_guardians
+                $stmt = $pdo->prepare("
+                    INSERT INTO applicant_guardians (
+                        applicant_id, first_name, last_name, relationship, phone, email,
+                        id_number, occupation, employer, address, is_primary, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                ");
+
+                $stmt->execute([
+                    $applicantId, $firstName, $lastName, $relationship, $phone, $email,
+                    $idNumber, $occupation, $employer, $address, $isPrimary
+                ]);
+
+                $auditDesc = "Guardian added: {$firstName} {$lastName} ({$relationship})";
+            }
 
             // Audit log
             $stmt = $pdo->prepare("
@@ -1627,7 +1859,7 @@ class ApplicantsController
             $stmt->execute([
                 $applicantId,
                 'guardian_added',
-                "Guardian added: {$firstName} {$lastName} ({$relationship})",
+                $auditDesc,
                 authUserId(),
                 Request::ip(),
                 Request::userAgent()
@@ -1650,6 +1882,7 @@ class ApplicantsController
 
     /**
      * Update guardian information
+     * Logs changes to sensitive fields (id_number) in field_audit_trail
      */
     public function updateGuardian()
     {
@@ -1671,15 +1904,22 @@ class ApplicantsController
             $relationship = Request::get('relationship');
             $phone = Request::get('phone');
             $email = Request::get('email');
-            $idNumber = Request::get('id_number');
+            $idNumber = trim(Request::get('id_number'));
             $occupation = Request::get('occupation');
             $employer = Request::get('employer');
             $address = Request::get('address');
             $isPrimary = Request::get('is_primary') ? 1 : 0;
+            $fieldChangeReasons = json_decode(Request::get('field_change_reasons') ?: '{}', true);
 
             // Validation
             if (empty($guardianId) || empty($applicantId) || empty($firstName) || empty($lastName) || empty($relationship) || empty($phone)) {
                 flash('error', 'Please fill in all required fields');
+                Response::back();
+            }
+
+            // ID number is now required
+            if (empty($idNumber)) {
+                flash('error', 'National ID / Passport number is required');
                 Response::back();
             }
 
@@ -1707,7 +1947,88 @@ class ApplicantsController
                 }
             }
 
+            // Define audited fields with their requirements
+            $auditedFields = [
+                'id_number' => ['label' => 'National ID / Passport', 'requiresReason' => true],
+                'first_name' => ['label' => 'First Name', 'requiresReason' => false],
+                'last_name' => ['label' => 'Last Name', 'requiresReason' => false],
+                'phone' => ['label' => 'Phone Number', 'requiresReason' => false],
+                'email' => ['label' => 'Email Address', 'requiresReason' => false],
+            ];
+
+            // Map field names to new values
+            $newValues = [
+                'id_number' => $idNumber,
+                'first_name' => $firstName,
+                'last_name' => $lastName,
+                'phone' => $phone,
+                'email' => $email,
+            ];
+
+            // Check which fields changed and validate required reasons
+            $changedFields = [];
+            foreach ($auditedFields as $fieldName => $config) {
+                $oldValue = $guardian[$fieldName] ?? '';
+                $newValue = $newValues[$fieldName] ?? '';
+
+                if ($oldValue !== $newValue) {
+                    // Check if reason is required but not provided
+                    if ($config['requiresReason'] && empty($fieldChangeReasons[$fieldName])) {
+                        flash('error', "Please provide a reason for changing the {$config['label']}");
+                        Response::back();
+                    }
+                    $changedFields[$fieldName] = [
+                        'old' => $oldValue,
+                        'new' => $newValue,
+                        'reason' => $fieldChangeReasons[$fieldName] ?? null,
+                        'label' => $config['label']
+                    ];
+                }
+            }
+
+            // Special validation for ID number change - check for duplicates
+            if (isset($changedFields['id_number'])) {
+                // Check if new ID number already exists (in other records)
+                $stmt = $pdo->prepare("SELECT id FROM applicant_guardians WHERE id_number = ? AND id != ?");
+                $stmt->execute([$idNumber, $guardianId]);
+                if ($stmt->fetch()) {
+                    flash('error', 'This ID number is already used by another guardian record');
+                    Response::back();
+                }
+
+                // Also check main guardians table
+                $stmt = $pdo->prepare("SELECT id FROM guardians WHERE id_number = ?");
+                $stmt->execute([$idNumber]);
+                if ($stmt->fetch()) {
+                    flash('error', 'This ID number already exists in the system. Please search and link instead.');
+                    Response::back();
+                }
+            }
+
             $pdo->beginTransaction();
+
+            // Log all field changes to field_audit_trail
+            $userName = $_SESSION['full_name'] ?? 'Unknown';
+            foreach ($changedFields as $fieldName => $change) {
+                $stmt = $pdo->prepare("
+                    INSERT INTO field_audit_trail (
+                        entity_type, entity_id, field_name, old_value, new_value,
+                        changed_by_user_id, changed_by_name, change_reason, ip_address, user_agent
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ");
+                $stmt->execute([
+                    'applicant_guardians',
+                    $guardianId,
+                    $fieldName,
+                    $change['old'],
+                    $change['new'],
+                    authUserId(),
+                    $userName,
+                    $change['reason'],
+                    Request::ip(),
+                    Request::userAgent()
+                ]);
+            }
 
             // If setting as primary, unset all other primary guardians first
             if ($isPrimary) {
@@ -1731,6 +2052,12 @@ class ApplicantsController
             ]);
 
             // Audit log
+            $auditDesc = "Guardian updated: {$firstName} {$lastName} ({$relationship})";
+            if (!empty($changedFields)) {
+                $changedLabels = array_map(fn($c) => $c['label'], $changedFields);
+                $auditDesc .= " [Changed: " . implode(', ', $changedLabels) . "]";
+            }
+
             $stmt = $pdo->prepare("
                 INSERT INTO applicant_audit (
                     applicant_id, action, description, user_id, ip_address, user_agent, created_at
@@ -1740,7 +2067,7 @@ class ApplicantsController
             $stmt->execute([
                 $applicantId,
                 'guardian_updated',
-                "Guardian updated: {$firstName} {$lastName} ({$relationship})",
+                $auditDesc,
                 authUserId(),
                 Request::ip(),
                 Request::userAgent()

@@ -252,15 +252,10 @@
                         <?php
                         $navModules = getNavigationModules();
                         foreach ($navModules as $module):
-                            // Check module permission
-                            $hasModulePermission = hasPermission($module['name'] . '.view') || Gate::hasRole('ADMIN');
-
-                            if ($module['name'] === 'Academics' && Gate::hasRole('TEACHER')) {
-                                $hasModulePermission = true;
-                            }
-                            if ($module['name'] === 'Finance' && Gate::hasRole('BURSAR')) {
-                                $hasModulePermission = true;
-                            }
+                            // Check module permission using new RBAC
+                            // Gate::canAccessModule checks if user has ANY permission for submodules in this module
+                            // ADMIN role automatically bypasses all checks
+                            $hasModulePermission = Gate::canAccessModule($module['name']);
 
                             if (!$hasModulePermission) continue;
 
@@ -301,11 +296,16 @@
                             <div class="dropdown-menu">
                                 <?php
                                     foreach ($module['submodules'] as $submodule):
-                                        // Check if this is a write action requiring permission
-                                        $requiresWrite = strpos($submodule['name'], 'New') !== false ||
-                                                        strpos($submodule['name'], 'Add') !== false ||
-                                                        strpos($submodule['name'], 'Create') !== false;
-                                        if ($requiresWrite && !hasPermission($module['name'] . '.write') && !Gate::hasRole('ADMIN')) continue;
+                                        // Check submodule view permission using new RBAC format
+                                        // Permission name format: Submodule.Name.view (e.g., Finance.Dashboard.view)
+                                        if (!Gate::canView($submodule['name'])) continue;
+
+                                        // Check if this is a create/add action requiring modify permission
+                                        $requiresModify = strpos($submodule['name'], 'New') !== false ||
+                                                         strpos($submodule['name'], 'Add') !== false ||
+                                                         strpos($submodule['name'], 'Create') !== false;
+                                        if ($requiresModify && !Gate::canModify($submodule['name'])) continue;
+
                                         $subIcon = convertSubmoduleIconToTabler($submodule['icon'] ?? '');
                                 ?>
                                 <a class="dropdown-item" href="<?= e($submodule['route']) ?>">

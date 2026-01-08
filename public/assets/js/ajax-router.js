@@ -363,6 +363,22 @@
             });
 
             console.log('Executed', scripts.length, 'scripts from loaded content');
+
+            // Re-initialize UI components after AJAX load
+            this.reinitializeUIComponents();
+        },
+
+        /**
+         * Re-initialize UI components that need setup after AJAX loads
+         */
+        reinitializeUIComponents() {
+            // Call document upload UI initializer if it exists
+            if (typeof window.initDocumentUploadUI === 'function') {
+                window.initDocumentUploadUI();
+            }
+
+            // Dispatch custom event for other components to listen to
+            document.dispatchEvent(new CustomEvent('ajaxContentLoaded'));
         },
 
         /**

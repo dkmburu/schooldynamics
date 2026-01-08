@@ -21,6 +21,9 @@
                     <a href="/finance/expenses" class="btn" style="background-color: #f76707; color: white; border-color: #f76707;" onmouseover="this.style.backgroundColor='#e8590c'; this.style.borderColor='#e8590c';" onmouseout="this.style.backgroundColor='#f76707'; this.style.borderColor='#f76707';">
                         <i class="ti ti-building-store me-2"></i>Expenses
                     </a>
+                    <a href="/finance/budgets" class="btn" style="background-color: #7048e8; color: white; border-color: #7048e8;" onmouseover="this.style.backgroundColor='#5f3dc4'; this.style.borderColor='#5f3dc4';" onmouseout="this.style.backgroundColor='#7048e8'; this.style.borderColor='#7048e8';">
+                        <i class="ti ti-calculator me-2"></i>Budgets
+                    </a>
                     <a href="/finance/invoices/generate" class="btn btn-primary">
                         <i class="ti ti-file-plus me-2"></i>Generate Invoices
                     </a>
@@ -177,6 +180,17 @@
                                     <i class="ti ti-shopping-cart text-danger"></i>
                                 </div>
                                 <div class="col">Expenses & Suppliers</div>
+                                <div class="col-auto">
+                                    <i class="ti ti-chevron-right text-muted"></i>
+                                </div>
+                            </div>
+                        </a>
+                        <a href="/finance/budgets" class="list-group-item list-group-item-action">
+                            <div class="row align-items-center">
+                                <div class="col-auto">
+                                    <i class="ti ti-calculator text-purple"></i>
+                                </div>
+                                <div class="col">Budget Management</div>
                                 <div class="col-auto">
                                     <i class="ti ti-chevron-right text-muted"></i>
                                 </div>

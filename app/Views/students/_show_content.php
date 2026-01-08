@@ -1286,46 +1286,30 @@ $fullName = $student['first_name'] . ' ' . ($student['middle_name'] ? $student['
     </div>
 </div>
 
-<!-- Edit Guardian Modal -->
+<!-- Edit Guardian Modal (with Audit Trail) -->
 <div class="modal modal-blur fade" id="editGuardianModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <form id="editGuardianForm" onsubmit="saveGuardian(event)">
                 <input type="hidden" name="guardian_id" id="edit_guardian_id">
-                <div class="modal-header">
-                    <h5 class="modal-title">Edit Guardian</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <input type="hidden" name="field_change_reasons" id="edit_field_change_reasons" value="{}">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="ti ti-user-edit me-2"></i>Edit Guardian</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label class="form-label required">First Name</label>
-                                <input type="text" name="first_name" id="edit_first_name" class="form-control" required>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label required">Last Name</label>
-                                <input type="text" name="last_name" id="edit_last_name" class="form-control" required>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label required">Phone Number</label>
-                                <input type="text" name="phone" id="edit_phone" class="form-control" required>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Email</label>
-                                <input type="email" name="email" id="edit_email" class="form-control">
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">ID Number</label>
-                                <input type="text" name="id_number" id="edit_id_number" class="form-control">
+                                <label class="form-label required">
+                                    National ID / Passport
+                                    <span class="audit-badge badge bg-warning-lt ms-2" data-field="id_number" style="display: none; cursor: pointer;">
+                                        <i class="ti ti-history"></i> Modified
+                                    </span>
+                                </label>
+                                <input type="text" name="id_number" id="edit_id_number" class="form-control audited-field"
+                                       data-field-name="id_number" data-field-label="National ID / Passport" data-requires-reason="1">
+                                <input type="hidden" class="original-value" data-for="id_number" value="">
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -1342,6 +1326,58 @@ $fullName = $student['first_name'] . ' ' . ($student['middle_name'] ? $student['
                                     <option value="Sibling">Sibling</option>
                                     <option value="Other">Other</option>
                                 </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label required">
+                                    First Name
+                                    <span class="audit-badge badge bg-warning-lt ms-2" data-field="first_name" style="display: none; cursor: pointer;">
+                                        <i class="ti ti-history"></i> Modified
+                                    </span>
+                                </label>
+                                <input type="text" name="first_name" id="edit_first_name" class="form-control audited-field"
+                                       data-field-name="first_name" data-field-label="First Name" data-requires-reason="0" required>
+                                <input type="hidden" class="original-value" data-for="first_name" value="">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label required">
+                                    Last Name
+                                    <span class="audit-badge badge bg-warning-lt ms-2" data-field="last_name" style="display: none; cursor: pointer;">
+                                        <i class="ti ti-history"></i> Modified
+                                    </span>
+                                </label>
+                                <input type="text" name="last_name" id="edit_last_name" class="form-control audited-field"
+                                       data-field-name="last_name" data-field-label="Last Name" data-requires-reason="0" required>
+                                <input type="hidden" class="original-value" data-for="last_name" value="">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label required">
+                                    Phone Number
+                                    <span class="audit-badge badge bg-warning-lt ms-2" data-field="phone" style="display: none; cursor: pointer;">
+                                        <i class="ti ti-history"></i> Modified
+                                    </span>
+                                </label>
+                                <input type="text" name="phone" id="edit_phone" class="form-control audited-field"
+                                       data-field-name="phone" data-field-label="Phone Number" data-requires-reason="0" required>
+                                <input type="hidden" class="original-value" data-for="phone" value="">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">
+                                    Email
+                                    <span class="audit-badge badge bg-warning-lt ms-2" data-field="email" style="display: none; cursor: pointer;">
+                                        <i class="ti ti-history"></i> Modified
+                                    </span>
+                                </label>
+                                <input type="email" name="email" id="edit_email" class="form-control audited-field"
+                                       data-field-name="email" data-field-label="Email Address" data-requires-reason="0">
+                                <input type="hidden" class="original-value" data-for="email" value="">
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -1375,6 +1411,72 @@ $fullName = $student['first_name'] . ' ' . ($student['middle_name'] ? $student['
                     <button type="submit" class="btn btn-primary">Save Changes</button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- Change Reason Modal (for audit trail) -->
+<div class="modal fade" id="guardianChangeReasonModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-warning-lt">
+                <h5 class="modal-title">
+                    <i class="ti ti-alert-triangle me-2 text-warning"></i>
+                    <span id="guardianChangeReasonTitle">Reason for Change</span>
+                </h5>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info mb-3">
+                    <div class="d-flex">
+                        <div class="me-2"><i class="ti ti-info-circle"></i></div>
+                        <div>
+                            <strong id="guardianChangeReasonFieldLabel">Field</strong> is being changed.
+                            <span id="guardianChangeReasonOldNew"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">
+                        Why is this change being made? <span id="guardianChangeReasonStar" class="text-danger">*</span>
+                    </label>
+                    <textarea class="form-control" id="guardianChangeReasonInput" rows="3"
+                              placeholder="e.g., Correcting typo, Updated after verification, ID was renewed..."></textarea>
+                    <small class="text-muted">This will be recorded in the audit trail.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="guardianChangeReasonCancelBtn">
+                    <i class="ti ti-x me-1"></i> Cancel Change
+                </button>
+                <button type="button" class="btn btn-primary" id="guardianChangeReasonConfirmBtn">
+                    <i class="ti ti-check me-1"></i> Confirm Change
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Field Audit History Modal -->
+<div class="modal fade" id="guardianFieldAuditModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning-lt">
+                <h5 class="modal-title" id="guardianFieldAuditTitle">
+                    <i class="ti ti-history me-2"></i>Field Change History
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="guardianFieldAuditContent">
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-primary"></div>
+                        <p class="mt-2 text-muted">Loading history...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
         </div>
     </div>
 </div>
@@ -1553,6 +1655,23 @@ $fullName = $student['first_name'] . ' ' . ($student['middle_name'] ? $student['
     border-bottom: none !important;
     margin-bottom: 0 !important;
     box-shadow: none !important;
+    overflow: hidden !important;
+}
+
+/* Prevent vertical scrolling in tabs container */
+.student-tabs-header .nav-tabs-icon-only {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+}
+
+/* Hide scrollbar for Chrome/Safari */
+.student-tabs-header .nav-tabs-icon-only::-webkit-scrollbar {
+    display: none;
 }
 
 /* Override nav-tabs border that creates the gap */
@@ -1752,27 +1871,268 @@ function removeGuardian(guardianId) {
     .catch(err => alert('Error removing guardian: ' + err.message));
 }
 
+// ============================================================================
+// Guardian Audit Trail System
+// ============================================================================
+
+const GUARDIAN_AUDITED_FIELDS = {
+    'id_number': { label: 'National ID / Passport', requiresReason: true },
+    'first_name': { label: 'First Name', requiresReason: false },
+    'last_name': { label: 'Last Name', requiresReason: false },
+    'phone': { label: 'Phone Number', requiresReason: false },
+    'email': { label: 'Email Address', requiresReason: false }
+};
+
+let guardianPendingChanges = {};
+let guardianOriginalValues = {};
+let guardianChangeReasons = {};
+let guardianCurrentChangeField = null;
+let guardianChangeReasonResolve = null;
+let currentGuardianId = null;
+
+function setGuardianFieldValue(fieldName, value) {
+    const fieldId = 'edit_' + fieldName;
+    const field = document.getElementById(fieldId);
+    if (field) {
+        field.value = value;
+    }
+    const originalInput = document.querySelector('#editGuardianForm .original-value[data-for="' + fieldName + '"]');
+    if (originalInput) {
+        originalInput.value = value;
+    }
+    guardianOriginalValues[fieldName] = value;
+}
+
+function resetGuardianEditForm() {
+    guardianPendingChanges = {};
+    guardianOriginalValues = {};
+    guardianChangeReasons = {};
+    document.getElementById('edit_field_change_reasons').value = '{}';
+    document.querySelectorAll('#editGuardianForm .audit-badge').forEach(b => b.style.display = 'none');
+    document.querySelectorAll('#editGuardianForm .audited-field').forEach(f => f.classList.remove('border-warning'));
+}
+
 // Edit Guardian - populate modal and show
 function editGuardian(guardian) {
+    resetGuardianEditForm();
+    currentGuardianId = guardian.id;
+
     document.getElementById('edit_guardian_id').value = guardian.id;
-    document.getElementById('edit_first_name').value = guardian.first_name || '';
-    document.getElementById('edit_last_name').value = guardian.last_name || '';
-    document.getElementById('edit_phone').value = guardian.phone || '';
-    document.getElementById('edit_email').value = guardian.email || '';
-    document.getElementById('edit_id_number').value = guardian.id_number || '';
+
+    // Set values and store originals for audited fields
+    setGuardianFieldValue('id_number', guardian.id_number || '');
+    setGuardianFieldValue('first_name', guardian.first_name || '');
+    setGuardianFieldValue('last_name', guardian.last_name || '');
+    setGuardianFieldValue('phone', guardian.phone || '');
+    setGuardianFieldValue('email', guardian.email || '');
+
+    // Non-audited fields
     document.getElementById('edit_relationship').value = guardian.relationship || '';
     document.getElementById('edit_occupation').value = guardian.occupation || '';
     document.getElementById('edit_is_primary').checked = guardian.is_primary == 1;
     document.getElementById('edit_can_pickup').checked = guardian.can_pickup == 1;
     document.getElementById('edit_address').value = guardian.address || '';
 
+    // Check audit history for each field
+    Object.keys(GUARDIAN_AUDITED_FIELDS).forEach(function(fieldName) {
+        checkGuardianFieldAuditHistory('student_guardians', guardian.id, fieldName);
+    });
+
     const modal = new bootstrap.Modal(document.getElementById('editGuardianModal'));
     modal.show();
 }
 
+// Check if field has audit history
+function checkGuardianFieldAuditHistory(entityType, entityId, fieldName) {
+    if (!entityId) return;
+
+    fetch('/api/audit/check?entity_type=' + entityType + '&entity_id=' + entityId + '&field_name=' + fieldName)
+        .then(response => response.json())
+        .then(data => {
+            const badge = document.querySelector('#editGuardianForm .audit-badge[data-field="' + fieldName + '"]');
+            if (badge && data.success && data.has_changes) {
+                badge.style.display = 'inline';
+                badge.setAttribute('data-change-count', data.change_count);
+                badge.onclick = function() {
+                    showGuardianFieldAuditHistory(entityType, entityId, fieldName);
+                };
+            }
+        })
+        .catch(err => console.log('Audit check error:', err));
+}
+
+// Show field audit history
+function showGuardianFieldAuditHistory(entityType, entityId, fieldName) {
+    const content = document.getElementById('guardianFieldAuditContent');
+    content.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Loading history...</p></div>';
+
+    const config = GUARDIAN_AUDITED_FIELDS[fieldName];
+    document.getElementById('guardianFieldAuditTitle').innerHTML = '<i class="ti ti-history me-2"></i>' +
+        (config ? config.label : fieldName) + ' - Change History';
+
+    const auditModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('guardianFieldAuditModal'));
+    auditModal.show();
+
+    fetch('/api/audit/history?entity_type=' + entityType + '&entity_id=' + entityId + '&field_name=' + fieldName)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.history.length > 0) {
+                let html = '<div class="table-responsive"><table class="table table-vcenter">';
+                html += '<thead><tr><th>Date</th><th>Changed By</th><th>Old Value</th><th>New Value</th><th>Reason</th></tr></thead><tbody>';
+
+                data.history.forEach(function(item) {
+                    html += '<tr>';
+                    html += '<td><small>' + escapeHtmlGuardian(item.created_at) + '</small></td>';
+                    html += '<td>' + escapeHtmlGuardian(item.changed_by_name || 'System') + '</td>';
+                    html += '<td><code class="text-danger">' + escapeHtmlGuardian(item.old_value || '-') + '</code></td>';
+                    html += '<td><code class="text-success">' + escapeHtmlGuardian(item.new_value || '-') + '</code></td>';
+                    html += '<td><small class="text-muted">' + escapeHtmlGuardian(item.change_reason || '-') + '</small></td>';
+                    html += '</tr>';
+                });
+
+                html += '</tbody></table></div>';
+                content.innerHTML = html;
+            } else {
+                content.innerHTML = '<div class="alert alert-info"><i class="ti ti-info-circle me-2"></i>No changes have been recorded for this field.</div>';
+            }
+        })
+        .catch(err => {
+            content.innerHTML = '<div class="alert alert-danger"><i class="ti ti-alert-circle me-2"></i>Error loading history.</div>';
+        });
+}
+
+function escapeHtmlGuardian(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Show change reason modal
+function showGuardianChangeReasonModal(fieldName, oldValue, newValue, requiresReason) {
+    return new Promise((resolve) => {
+        const config = GUARDIAN_AUDITED_FIELDS[fieldName];
+        const label = config ? config.label : fieldName;
+
+        document.getElementById('guardianChangeReasonTitle').textContent = 'Reason for Changing ' + label;
+        document.getElementById('guardianChangeReasonFieldLabel').textContent = label;
+
+        let valuesHtml = '';
+        if (oldValue) {
+            valuesHtml = '<br><small class="text-muted">' +
+                '<code class="text-danger">' + escapeHtmlGuardian(oldValue) + '</code> → ' +
+                '<code class="text-success">' + escapeHtmlGuardian(newValue) + '</code></small>';
+        }
+        document.getElementById('guardianChangeReasonOldNew').innerHTML = valuesHtml;
+
+        document.getElementById('guardianChangeReasonStar').style.display = requiresReason ? 'inline' : 'none';
+        document.getElementById('guardianChangeReasonInput').value = '';
+
+        guardianCurrentChangeField = fieldName;
+        guardianChangeReasonResolve = resolve;
+
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('guardianChangeReasonModal'));
+        modal.show();
+
+        setTimeout(() => {
+            document.getElementById('guardianChangeReasonInput').focus();
+        }, 300);
+    });
+}
+
+// Change reason confirm button
+document.getElementById('guardianChangeReasonConfirmBtn').addEventListener('click', function() {
+    const reason = document.getElementById('guardianChangeReasonInput').value.trim();
+    const config = GUARDIAN_AUDITED_FIELDS[guardianCurrentChangeField];
+    const requiresReason = config && config.requiresReason;
+
+    if (requiresReason && !reason) {
+        alert('Please provide a reason for this change.');
+        document.getElementById('guardianChangeReasonInput').focus();
+        return;
+    }
+
+    guardianChangeReasons[guardianCurrentChangeField] = reason;
+    document.getElementById('edit_field_change_reasons').value = JSON.stringify(guardianChangeReasons);
+
+    guardianPendingChanges[guardianCurrentChangeField] = true;
+    const fieldEl = document.getElementById('edit_' + guardianCurrentChangeField);
+    if (fieldEl) {
+        fieldEl.classList.add('border-warning');
+    }
+
+    const modal = bootstrap.Modal.getInstance(document.getElementById('guardianChangeReasonModal'));
+    modal.hide();
+
+    if (guardianChangeReasonResolve) {
+        guardianChangeReasonResolve({ confirmed: true, reason: reason });
+    }
+});
+
+// Change reason cancel button
+document.getElementById('guardianChangeReasonCancelBtn').addEventListener('click', function() {
+    const originalValue = guardianOriginalValues[guardianCurrentChangeField] || '';
+    const fieldEl = document.getElementById('edit_' + guardianCurrentChangeField);
+    if (fieldEl) {
+        fieldEl.value = originalValue;
+        fieldEl.classList.remove('border-warning');
+    }
+
+    delete guardianPendingChanges[guardianCurrentChangeField];
+    delete guardianChangeReasons[guardianCurrentChangeField];
+    document.getElementById('edit_field_change_reasons').value = JSON.stringify(guardianChangeReasons);
+
+    const modal = bootstrap.Modal.getInstance(document.getElementById('guardianChangeReasonModal'));
+    modal.hide();
+
+    if (guardianChangeReasonResolve) {
+        guardianChangeReasonResolve({ confirmed: false });
+    }
+});
+
+// Detect changes on audited fields
+document.querySelectorAll('#editGuardianForm .audited-field').forEach(function(field) {
+    field.addEventListener('blur', function() {
+        const fieldName = this.getAttribute('data-field-name');
+        const originalValue = guardianOriginalValues[fieldName] || '';
+        const currentValue = this.value.trim();
+
+        if (originalValue !== currentValue && !guardianPendingChanges[fieldName]) {
+            const config = GUARDIAN_AUDITED_FIELDS[fieldName];
+            const requiresReason = config && config.requiresReason;
+
+            showGuardianChangeReasonModal(fieldName, originalValue, currentValue, requiresReason);
+        }
+    });
+});
+
 // Save Guardian changes
 function saveGuardian(event) {
     event.preventDefault();
+
+    // Validate required reasons
+    const missingReasons = [];
+    document.querySelectorAll('#editGuardianForm .audited-field').forEach(function(field) {
+        const fieldName = field.getAttribute('data-field-name');
+        const originalValue = guardianOriginalValues[fieldName] || '';
+        const currentValue = field.value.trim();
+        const config = GUARDIAN_AUDITED_FIELDS[fieldName];
+
+        if (originalValue !== currentValue && config && config.requiresReason) {
+            if (!guardianChangeReasons[fieldName]) {
+                missingReasons.push(config.label);
+            }
+        }
+    });
+
+    if (missingReasons.length > 0) {
+        alert('Please provide a reason for changing: ' + missingReasons.join(', '));
+        return;
+    }
+
+    // Update hidden field with all reasons
+    document.getElementById('edit_field_change_reasons').value = JSON.stringify(guardianChangeReasons);
+
     const form = event.target;
     const formData = new FormData(form);
     const guardianId = formData.get('guardian_id');
