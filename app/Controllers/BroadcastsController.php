@@ -58,7 +58,7 @@ class BroadcastsController
             SELECT b.*,
                    u.full_name as created_by_name,
                    approver.full_name as approved_by_name,
-                   mt.name as template_name,
+                   ct.template_name as template_name,
                    COALESCE(
                        (SELECT title FROM events WHERE id = b.source_id AND b.source_type = 'event'),
                        CONCAT('Invoice #', b.source_id)
@@ -66,7 +66,7 @@ class BroadcastsController
             FROM broadcasts b
             LEFT JOIN users u ON b.created_by = u.id
             LEFT JOIN users approver ON b.approved_by = approver.id
-            LEFT JOIN message_templates mt ON b.template_id = mt.id
+            LEFT JOIN communication_templates ct ON b.template_id = ct.id
             WHERE {$whereClause}
             ORDER BY b.created_at DESC
         ");
