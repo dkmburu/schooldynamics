@@ -273,12 +273,40 @@ DELETE FROM submodules WHERE module_id = 15;
 
 DELETE FROM modules WHERE id = 15;
 
--- Step 8: Tables already dropped at the beginning of this script
+-- Step 8: Create communication_credits table
+-- This table was dropped at the beginning, now recreate it
+CREATE TABLE IF NOT EXISTS communication_credits (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    school_id INT UNSIGNED NOT NULL,
 
--- Note: Keep communication_credits table as it already exists and works
--- Just ensure credit_balances exists for quick lookups
+    credit_type ENUM('sms', 'whatsapp', 'email') NOT NULL,
+    transaction_type ENUM('purchase', 'usage', 'refund', 'adjustment') NOT NULL,
 
--- Add credit_balances if it doesn't exist
+    amount DECIMAL(10,2) NOT NULL COMMENT 'Positive for purchase/refund, negative for usage',
+    balance_before DECIMAL(10,2) NOT NULL,
+    balance_after DECIMAL(10,2) NOT NULL,
+
+    -- Reference to broadcast if this is a usage transaction
+    broadcast_id BIGINT UNSIGNED NULL,
+
+    -- Purchase details
+    purchase_reference VARCHAR(100) NULL,
+    purchase_amount DECIMAL(10,2) NULL COMMENT 'Money paid for credits',
+    payment_method VARCHAR(50) NULL,
+
+    description TEXT NULL,
+    created_by BIGINT UNSIGNED NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    INDEX idx_school_type (school_id, credit_type),
+    INDEX idx_broadcast (broadcast_id),
+    INDEX idx_created (created_at),
+
+    FOREIGN KEY (school_id) REFERENCES school_profile(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Step 9: Add credit_balances if it doesn't exist
 CREATE TABLE IF NOT EXISTS credit_balances (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     school_id INT UNSIGNED NOT NULL,
